@@ -19,3 +19,6 @@ output/
 .git/
 .gitignore
 assets/test_transcription.json
+
+# Raccourcis Windows, inutiles dans l'image Linux
+*.bat
