@@ -1,0 +1,21 @@
+# --- Interface ---
+gradio>=5.9,<6
+
+# --- Transcription alignée mot par mot ---
+# whisper-timestamped fournit les timestamps par MOT, indispensables pour le karaoké.
+# (openai-whisper seul ne donne que des timestamps par phrase.)
+# torch : sur Windows le wheel PyPI est déjà CPU-only.
+# Dans le Dockerfile (Linux) on force l'index CPU, sinon l'image fait ~5 Go.
+torch>=2.4,<2.6
+whisper-timestamped>=1.15
+
+# Accélère le détecteur de voix (silero VAD) sur processeur. Sans lui, le VAD
+# tourne sous torch et whisper-timestamped affiche un avertissement à chaque appel.
+onnxruntime>=1.19
+
+# --- Extraction de mots-clés ---
+spacy>=3.8,<3.9
+
+# --- Appels API (Pexels, Pixabay, Jamendo) ---
+requests>=2.32
+python-dotenv>=1.0

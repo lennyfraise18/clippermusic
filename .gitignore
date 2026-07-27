@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Fichiers de travail générés pendant un traitement
+work/
+output/
+*.mp4
+!assets/demo_*.mp4
+
+# Modèles Whisper téléchargés en cache
+.cache/

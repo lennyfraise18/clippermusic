@@ -1,0 +1,21 @@
+# Sans ce fichier, le `COPY . .` du Dockerfile embarquerait l'environnement
+# virtuel local (plusieurs Go) et les vidéos de test dans l'image du Space.
+
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets : sur le Space, ils passent par Settings > Variables and secrets.
+.env
+
+# Fichiers de travail et sorties : régénérés à chaque traitement.
+work/
+output/
+
+# Cache local des modèles (l'image les télécharge elle-même).
+.cache/
+
+# Inutile dans l'image
+.git/
+.gitignore
+assets/test_transcription.json
