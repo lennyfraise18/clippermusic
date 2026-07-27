@@ -182,6 +182,10 @@ clés API. Tant qu'il affiche une ligne `[FAIL]`, inutile d'aller plus loin.
 
 Puis ouvre **http://localhost:7860** dans un navigateur.
 
+⚠️ Le terminal affiche `Running on local URL: http://0.0.0.0:7860`. `0.0.0.0`
+signifie « écoute sur toutes les interfaces réseau » — ce n'est pas une adresse
+navigable. Utilise bien `localhost`.
+
 ---
 
 ### 6. Obtenir un lien public sans hébergement
@@ -191,11 +195,7 @@ un tunnel public temporaire depuis ta propre machine — pratique pour montrer l
 démo à distance :
 
 ```bash
-set GRADIO_SHARE=1
-```
-
-```bash
-.venv\Scripts\python.exe app.py
+.venv\Scripts\python.exe app.py --share
 ```
 
 Une adresse en `*.gradio.live` s'affiche dans le terminal. Elle reste valable

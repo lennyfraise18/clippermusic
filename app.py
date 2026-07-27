@@ -18,6 +18,7 @@ Lancement en local :
 """
 
 import os
+import sys
 import traceback
 from pathlib import Path
 
@@ -358,21 +359,38 @@ if __name__ == "__main__":
     if not videos.has_any_key():
         print("ATTENTION : " + videos.missing_key_message())
 
-    # Lien public temporaire.
-    # Sur un Space Hugging Face, l'adresse publique est fournie par la plateforme
-    # et cette option reste désactivée. En local, la passer à 1 crée un tunnel
-    # *.gradio.live valable une semaine : de quoi montrer la démo à distance
-    # sans dépendre d'un quota d'hébergement.
-    #     Windows :  set GRADIO_SHARE=1  puis  .venv\Scripts\python.exe app.py
-    partager = os.getenv("GRADIO_SHARE", "").strip() in {"1", "true", "yes"}
+    # Lien public temporaire, activé par l'argument --share :
+    #     .venv\Scripts\python.exe app.py --share
+    #
+    # Sur un Space Hugging Face, l'adresse publique vient de la plateforme et
+    # cette option reste inutile. En local, elle crée un tunnel *.gradio.live
+    # valable environ une semaine — de quoi montrer la démo à distance sans
+    # dépendre d'un quota d'hébergement.
+    #
+    # La variable d'environnement GRADIO_SHARE reste acceptée, mais l'argument
+    # est plus simple : il n'a pas de syntaxe différente entre CMD et PowerShell.
+    partager = (
+        "--share" in sys.argv
+        or os.getenv("GRADIO_SHARE", "").strip() in {"1", "true", "yes"}
+    )
 
+    print("\n" + "=" * 58)
+    print("  Ouvre cette adresse dans ton navigateur :")
+    print("      http://localhost:7860")
+    print()
     if partager:
-        print("\nLien public temporaire activé (valable ~1 semaine).")
-        print("L'adresse *.gradio.live s'affiche ci-dessous : elle rend cette")
-        print("application accessible depuis internet tant que ce terminal")
-        print("reste ouvert. Ferme-le pour couper l'accès.\n")
+        print("  Un lien public https://....gradio.live va aussi s'afficher")
+        print("  juste en dessous. Il fonctionne tant que ce terminal reste")
+        print("  ouvert ; ferme-le pour couper l'accès.")
+    else:
+        print("  Pour obtenir en plus un lien public partageable, relance avec :")
+        print("      .venv\\Scripts\\python.exe app.py --share")
+    print("=" * 58 + "\n")
 
     construire_interface().queue(max_size=8).launch(
+        # 0.0.0.0 = « écoute sur toutes les interfaces », nécessaire dans un
+        # conteneur. Ce n'est PAS une adresse à taper dans un navigateur :
+        # côté utilisateur, c'est http://localhost:7860 (voir le message ci-dessus).
         server_name="0.0.0.0",
         server_port=7860,
         share=partager,
