@@ -30,49 +30,45 @@ from modules import audio, config, pipeline, videos
 
 TITRE = "🎬 Générateur de clips paroles"
 
-INTRODUCTION = """
-Transforme une chanson en vidéo verticale 1080×1920 avec les paroles en
-karaoké, illustrée automatiquement par des extraits vidéo libres de droit.
+INTRODUCTION = (
+    "Transforme une chanson en vidéo verticale avec les paroles en karaoké, "
+    "illustrée automatiquement."
+)
 
-**Comment ça marche :** transcription alignée mot par mot (Whisper), extraction
-des thèmes visuels (spaCy), recherche d'images d'illustration (Pexels / Pixabay),
-montage (ffmpeg).
+# Version courte affichée d'emblée : une phrase, un lien vers le détail.
+AVERTISSEMENT_COURT = (
+    "⚠️ **Musique protégée.** La vidéo sera générée, mais ne la publie pas sur "
+    "les réseaux : elle serait bloquée automatiquement, et tu t'exposerais à un "
+    "risque juridique. Garde ce mode pour un usage privé ou une démonstration."
+)
+
+# Détail replié : disponible pour qui veut comprendre, invisible pour les autres.
+AVERTISSEMENT_DETAIL = """
+**Le blocage automatique.** Content ID (YouTube) et les systèmes équivalents
+d'Instagram et TikTok reconnaissent un enregistrement en quelques secondes, même
+ralenti, coupé ou recouvert de voix. La vidéo est retirée, coupée du son, ou
+monétisée au profit de l'ayant droit.
+
+**Le risque juridique.** Deux droits distincts s'appliquent : celui de la
+**composition** (auteur, compositeur, éditeur) et celui de l'**enregistrement**
+(le master, détenu par le label). Utiliser un extrait sans licence porte atteinte
+aux deux, et la courte durée n'est pas une exception en droit français.
+
+Pour une vidéo réellement publiable, utilise le mode **Creative Commons**.
 """
 
-AVERTISSEMENT_DEMO = """
-### ⚠️ Avertissement — musique protégée
+EXPLICATION_CC = (
+    "✅ **Musique libre de droits.** Ces morceaux viennent de "
+    "[Jamendo](https://www.jamendo.com) et sont diffusables partout, à condition "
+    "de créditer l'artiste — le crédit s'affiche avec ta vidéo, prêt à recopier."
+)
 
-Tu es sur le point d'utiliser un enregistrement commercial. Le montage
-fonctionnera, mais **diffuser publiquement la vidéo obtenue t'expose à** :
-
-- **un blocage automatique.** Content ID (YouTube) et les systèmes équivalents
-  d'Instagram et TikTok identifient un enregistrement en quelques secondes, même
-  ralenti, coupé ou recouvert de voix. La vidéo est retirée, coupée du son, ou
-  monétisée au profit de l'ayant droit ;
-- **un risque juridique réel.** Deux droits distincts s'appliquent : celui de la
-  **composition** (auteur, compositeur, éditeur) et celui de l'**enregistrement**
-  (le master, généralement détenu par le label). Utiliser un extrait sans licence
-  porte atteinte aux deux, et la courte durée n'est pas une exception en droit
-  français.
-
-**Usage sûr de ce mode :** test, démonstration technique, portfolio, usage privé.
-
-Pour une vidéo réellement publiable, utilise l'onglet **Creative Commons**.
-"""
-
-EXPLICATION_CC = """
-### ✅ Mode légal par construction
-
-Les morceaux proposés ici viennent de [Jamendo](https://www.jamendo.com), sous
-licence **Creative Commons**. Ils sont libres de diffusion, y compris sur les
-réseaux sociaux, à condition de **créditer l'artiste** — le crédit est affiché
-avec le résultat, il suffit de le recopier dans ta description.
-
-⚠️ **« Creative Commons » ne veut pas dire « tout est permis ».** Les licences
-**ND** (*No Derivatives*) autorisent le partage du morceau tel quel mais
-interdisent d'en tirer une œuvre dérivée — donc exactement ce que fait cette
-application. Environ un tiers du catalogue Jamendo est concerné : ces morceaux
-sont **automatiquement écartés** de la recherche.
+EXPLICATION_CC_DETAIL = """
+« Creative Commons » ne veut pas dire « tout est permis ». Les licences **ND**
+(*No Derivatives*) autorisent le partage du morceau tel quel mais **interdisent
+d'en tirer une œuvre dérivée** — exactement ce que fait cette application.
+Environ un tiers du catalogue Jamendo est concerné : ces morceaux sont
+automatiquement écartés de la recherche.
 
 Les vidéos de fond viennent de Pexels et Pixabay, dont les licences autorisent
 explicitement l'intégration dans une œuvre dérivée.
@@ -247,20 +243,23 @@ def construire_interface() -> gr.Blocks:
         mode = gr.Radio(
             choices=["Creative Commons (Jamendo)", "Mon fichier (démo)"],
             value="Creative Commons (Jamendo)",
-            label="Source de la musique",
-            info="Le mode Creative Commons produit une vidéo réellement diffusable.",
+            label="Ta musique",
+            info="Creative Commons = vidéo publiable. Mon fichier = privé seulement.",
         )
 
         # --- Bloc Creative Commons ---
         with gr.Group(visible=True) as bloc_cc:
             gr.Markdown(EXPLICATION_CC)
+            with gr.Accordion("Pourquoi certains morceaux sont écartés", open=False):
+                gr.Markdown(EXPLICATION_CC_DETAIL)
             with gr.Row():
                 recherche = gr.Textbox(
-                    label="Rechercher un morceau",
-                    placeholder="pop, acoustic, hip hop, chanson française…",
+                    label="Chercher un style de musique",
+                    placeholder="pop, rock, acoustic, chanson, hip hop…",
+                    info="Un style ou une ambiance — pas un lien YouTube.",
                     scale=3,
                 )
-                bouton_recherche = gr.Button("Chercher", scale=1)
+                bouton_recherche = gr.Button("Chercher", variant="secondary", scale=1)
             # allow_custom_value : sans lui, Gradio refuse toute valeur qui
             # n'est pas dans `choices`. Or en mode démo la liste est vide et
             # jamais remplie — le bouton « Générer » serait rejeté avant même
@@ -278,15 +277,16 @@ def construire_interface() -> gr.Blocks:
 
         # --- Bloc démo ---
         with gr.Group(visible=False) as bloc_demo:
-            gr.Markdown(AVERTISSEMENT_DEMO)
+            gr.Markdown(AVERTISSEMENT_COURT)
+            with gr.Accordion("Pourquoi ce n'est pas publiable", open=False):
+                gr.Markdown(AVERTISSEMENT_DETAIL)
             fichier = gr.Audio(
                 label="Ton fichier audio (MP3, WAV, M4A…)",
                 type="filepath",
                 sources=["upload"],
             )
             avertissement = gr.Checkbox(
-                label="J'ai lu l'avertissement et je n'utiliserai cette vidéo "
-                      "qu'à titre privé ou de démonstration.",
+                label="J'ai compris : usage privé ou démonstration seulement.",
                 value=False,
             )
 
@@ -309,22 +309,18 @@ def construire_interface() -> gr.Blocks:
 
         bouton_generer = gr.Button("🎬 Générer le clip", variant="primary", size="lg")
 
-        message = gr.Markdown(
-            "*Choisis une musique, puis lance la génération. "
-            "Compte une à trois minutes selon la longueur du morceau.*"
-        )
-        video = gr.Video(label="Clip généré (1080×1920)", height=520)
-        credits = gr.Markdown("*Les crédits s'afficheront ici après génération.*")
-        paroles = gr.Textbox(
-            label="Paroles transcrites", lines=8, show_copy_button=True
-        )
+        message = gr.Markdown("*Compte une à trois minutes de traitement.*")
+        video = gr.Video(label="Ton clip", height=520)
+        credits = gr.Markdown("")
+
+        with gr.Accordion("Paroles transcrites", open=False):
+            paroles = gr.Textbox(
+                label="", lines=8, show_copy_button=True, container=False
+            )
 
         gr.Markdown(
-            "---\n"
-            "*Le premier lancement prend plus de temps : le modèle de "
-            "transcription doit être téléchargé. Sur un Space gratuit, "
-            "l'application se met aussi en veille après inactivité et met "
-            "quelques dizaines de secondes à redémarrer.*"
+            "<sub>Transcription Whisper · thèmes visuels spaCy · "
+            "vidéos Pexels & Pixabay · montage ffmpeg</sub>"
         )
 
         # --- Branchements ---

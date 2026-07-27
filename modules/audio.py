@@ -5,6 +5,7 @@ Découvrir qu'un fichier est corrompu après trois minutes de transcription,
 c'est trois minutes perdues et un utilisateur perdu aussi.
 """
 
+import html
 import json
 import subprocess
 from pathlib import Path
@@ -123,6 +124,16 @@ def allows_derivatives(license_url: str) -> bool:
     return "-nd" not in license_url.lower()
 
 
+def _ressemble_a_un_lien(texte: str) -> bool:
+    """Vrai si l'utilisateur a collé une URL au lieu d'un mot-clé."""
+    minuscules = texte.lower()
+    if minuscules.startswith(("http://", "https://", "www.")):
+        return True
+    domaines = ("youtube.com", "youtu.be", "spotify.com", "deezer.com",
+                "soundcloud.com", "apple.com/music")
+    return any(domaine in minuscules for domaine in domaines)
+
+
 def _appel_jamendo(params: dict) -> list[dict]:
     """Appelle l'API Jamendo et renvoie la liste brute des résultats.
 
@@ -173,6 +184,21 @@ def search_jamendo(query: str, limit: int = 8) -> list[dict]:
     if not query:
         raise AudioError("Entre un mot-clé pour chercher un morceau (ex. « pop », « acoustic »).")
 
+    # Erreur d'usage la plus fréquente : coller un lien YouTube ou Spotify dans
+    # la barre de recherche. Sans ce garde-fou, Jamendo cherche bêtement un titre
+    # contenant « youtube.com » et renvoie des morceaux sans aucun rapport —
+    # l'utilisateur croit alors que la recherche fonctionne mal.
+    if _ressemble_a_un_lien(query):
+        raise AudioError(
+            "Cette barre cherche dans le catalogue Jamendo (musique libre de "
+            "droits), pas sur internet : un lien YouTube ou Spotify n'y donnera "
+            "rien.\n\n"
+            "• Pour trouver une musique libre : tape un style ou une ambiance "
+            "(« pop », « rock », « acoustic », « chanson »).\n"
+            "• Pour utiliser un morceau précis que tu possèdes : bascule sur "
+            "« Mon fichier (démo) » et envoie le MP3."
+        )
+
     base_params = {
         "client_id": config.JAMENDO_CLIENT_ID,
         "format": "json",
@@ -209,8 +235,11 @@ def search_jamendo(query: str, limit: int = 8) -> list[dict]:
         tracks.append(
             {
                 "id": item.get("id", ""),
-                "name": item.get("name", "Sans titre"),
-                "artist": item.get("artist_name", "Artiste inconnu"),
+                # Jamendo renvoie du texte encodé pour le HTML : sans décodage,
+                # un groupe nommé « Master Q & General » s'affiche
+                # « Master Q &amp; General » dans la liste.
+                "name": html.unescape(item.get("name") or "Sans titre"),
+                "artist": html.unescape(item.get("artist_name") or "Artiste inconnu"),
                 "duration": int(item.get("duration") or 0),
                 "url": download_url,
                 "license": license_url,
