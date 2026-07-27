@@ -11,3 +11,6 @@ output/
 
 # Modèles Whisper téléchargés en cache
 .cache/
+
+# Cache de Gradio (créé au lancement, sans intérêt dans le dépôt)
+.gradio/
