@@ -59,9 +59,10 @@ RUN python -c "import torch; torch.hub.load('snakers4/silero-vad', 'silero_vad',
 # --- Code de l'application --------------------------------------------------
 COPY --chown=user . .
 
-ENV GRADIO_SERVER_NAME=0.0.0.0 \
-    GRADIO_SERVER_PORT=7860
+ENV GRADIO_SERVER_NAME=0.0.0.0
 
+# 7860 est le port attendu par Hugging Face Spaces. Railway, Render et Fly.io
+# imposent le leur via la variable PORT, que app.py lit en priorité.
 EXPOSE 7860
 
 CMD ["python", "app.py"]

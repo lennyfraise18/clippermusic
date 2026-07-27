@@ -675,9 +675,18 @@ if __name__ == "__main__":
         or os.getenv("GRADIO_SHARE", "").strip() in {"1", "true", "yes"}
     )
 
+    # Le port doit être configurable : Railway, Render et Fly.io imposent le
+    # leur via la variable PORT et refusent le conteneur s'il écoute ailleurs.
+    # Hugging Face Spaces attend 7860, qui reste donc la valeur par défaut.
+    port = int(
+        os.getenv("PORT")
+        or os.getenv("GRADIO_SERVER_PORT")
+        or 7860
+    )
+
     print("\n" + "=" * 58)
     print("  Ouvre cette adresse dans ton navigateur :")
-    print("      http://localhost:7860")
+    print(f"      http://localhost:{port}")
     print()
     if partager:
         print("  Un lien public https://....gradio.live va aussi s'afficher")
@@ -692,7 +701,7 @@ if __name__ == "__main__":
         # 0.0.0.0 = « écoute sur toutes les interfaces », nécessaire dans un
         # conteneur. Ce n'est PAS une adresse à taper dans un navigateur.
         server_name="0.0.0.0",
-        server_port=7860,
+        server_port=port,
         share=partager,
         show_error=True,
     )
