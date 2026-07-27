@@ -120,6 +120,77 @@ def transcribe_audio(
     return _select_best_window(segments, raw.get("language", language or "fr"))
 
 
+def appliquer_texte_corrige(segments: list[dict], texte: str) -> list[dict]:
+    """Remplace les paroles par une version corrigée à la main, sans retranscrire.
+
+    Whisper se trompe régulièrement, surtout sur l'argot et les noms propres.
+    Plutôt que de relancer une transcription (une minute ou plus), on réutilise
+    les temps déjà calculés et on n'échange que les mots.
+
+    `texte` contient une ligne par segment, dans le même ordre qu'à l'affichage.
+
+    Quand une ligne corrigée n'a pas le même nombre de mots que l'originale, on
+    redistribue la durée de la ligne sur les nouveaux mots, proportionnellement
+    à leur longueur — une syllabe de plus prend un peu plus de temps. Ce n'est
+    pas un réalignement acoustique, mais l'écart reste sous le dixième de
+    seconde, invisible à l'oeil sur un karaoké.
+    """
+    lignes = [ligne.strip() for ligne in (texte or "").splitlines()]
+    lignes = [ligne for ligne in lignes if ligne]
+
+    if not lignes:
+        raise TranscriptionError("Les paroles corrigées sont vides.")
+
+    if len(lignes) != len(segments):
+        raise TranscriptionError(
+            f"Il faut exactement une ligne par phrase : {len(segments)} lignes "
+            f"attendues, {len(lignes)} reçues.\n"
+            "Corrige les mots sans ajouter ni supprimer de ligne."
+        )
+
+    corriges = []
+    for segment, ligne in zip(segments, lignes):
+        mots = ligne.split()
+        if not mots:
+            continue
+
+        debut = segment["words"][0]["start"]
+        fin = segment["words"][-1]["end"]
+        duree = max(fin - debut, 0.05)
+
+        # Répartition proportionnelle à la longueur des mots.
+        longueurs = [len(mot) for mot in mots]
+        total = sum(longueurs) or len(mots)
+
+        nouveaux_mots = []
+        curseur = debut
+        for mot, longueur in zip(mots, longueurs):
+            part = duree * (longueur / total)
+            nouveaux_mots.append(
+                {
+                    "text": mot,
+                    "start": curseur,
+                    "end": curseur + part,
+                    "confidence": 1.0,  # corrigé par un humain
+                }
+            )
+            curseur += part
+
+        nouveaux_mots[-1]["end"] = fin
+
+        corriges.append(
+            {
+                "text": " ".join(mots),
+                "start": debut,
+                "end": fin,
+                "confidence": 1.0,
+                "words": nouveaux_mots,
+            }
+        )
+
+    return corriges
+
+
 def _normalise_segments(raw_segments: list[dict]) -> list[dict]:
     """Convertit la sortie de whisper-timestamped en structure simple et propre."""
     segments = []

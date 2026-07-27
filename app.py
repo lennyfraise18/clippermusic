@@ -23,7 +23,7 @@ from pathlib import Path
 
 import gradio as gr
 
-from modules import audio, config, liens, pipeline, videos
+from modules import audio, config, liens, pipeline, transcribe, videos
 
 # --- Textes de l'interface ---------------------------------------------------
 
@@ -164,6 +164,78 @@ def _preparer_morceau_libre(morceaux: list, libelle_choisi: str):
     return audio.download_jamendo_track(choisi, destination), choisi
 
 
+def refaire(
+    session: dict,
+    paroles_corrigees: str,
+    sans_musique: bool,
+    progress=gr.Progress(),
+):
+    """Refait la vidéo à partir des paroles corrigées, avec de nouveaux visuels.
+
+    Ne repasse pas par Whisper : la transcription de la première génération est
+    réutilisée, seul le texte change. Le traitement dure une trentaine de
+    secondes au lieu de plusieurs minutes.
+    """
+    if not session or not session.get("audio"):
+        return None, "❌ Génère d'abord une première version.", "", session
+
+    chemin_audio = Path(session["audio"])
+    if not chemin_audio.exists():
+        return (
+            None,
+            "❌ Le fichier audio n'est plus disponible. Redépose-le et relance.",
+            "", session,
+        )
+
+    transcription = dict(session["transcription"])
+
+    try:
+        transcription["segments"] = transcribe.appliquer_texte_corrige(
+            transcription["segments"], paroles_corrigees
+        )
+    except transcribe.TranscriptionError as erreur:
+        return None, f"❌ {erreur}", "", session
+
+    etapes = {"n": 0}
+
+    def avancement(message: str) -> None:
+        etapes["n"] = min(etapes["n"] + 1, 30)
+        progress(etapes["n"] / 34, desc=message)
+
+    try:
+        resultat = pipeline.generate_clip(
+            chemin_audio,
+            progress=avancement,
+            inclure_audio=not sans_musique,
+            transcription_prete=transcription,
+            clips_a_eviter=set(session.get("clips", [])),
+        )
+    except pipeline.PipelineError as erreur:
+        return None, f"❌ {erreur}", "", session
+    except Exception as erreur:
+        traceback.print_exc()
+        return None, f"❌ Erreur inattendue : {erreur}", "", session
+
+    progress(1.0, desc="Terminé.")
+
+    session["transcription"] = resultat["transcription"]
+    session["clips"] = list(session.get("clips", [])) + resultat["clip_ids"]
+
+    message = (
+        f"✅ **Nouvelle version** — paroles corrigées, visuels renouvelés "
+        f"({resultat['seconds']:.0f} s)."
+    )
+    credits = session.get("credit_musique", "") + "\n\n🎥 **Visuels :** " + ", ".join(
+        resultat["credits"][:6]
+    )
+    if sans_musique:
+        credits += (
+            "\n\n🔇 **Vidéo sans musique.** Ajoute le son sur TikTok ou Instagram."
+        )
+
+    return str(resultat["video"]), message, credits, session
+
+
 def generer(
     fichier_upload: str | None,
     morceaux_proposes: list,
@@ -175,7 +247,7 @@ def generer(
 ):
     """Point d'entrée du bouton principal.
 
-    Renvoie : (vidéo, message, crédits, paroles).
+    Renvoie : (vidéo, message, crédits, paroles, session).
     """
     etapes = {"n": 0}
 
@@ -185,9 +257,10 @@ def generer(
         etapes["n"] = min(etapes["n"] + 1, 40)
         progress(etapes["n"] / 45, desc=message)
 
-    # Morceau téléchargé à supprimer à la fin : sans ça, chaque génération
-    # laisse un MP3 sur le disque du Space, qui sature vite.
-    fichier_temporaire: Path | None = None
+    # Les morceaux téléchargés ne sont plus supprimés tout de suite : ils
+    # doivent survivre pour permettre de corriger les paroles et refaire la
+    # vidéo. Une purge horaire s'en charge (pipeline.purger_audios_temporaires).
+    pipeline.purger_audios_temporaires()
 
     try:
         if fichier_upload:
@@ -199,7 +272,6 @@ def generer(
             chemin_audio, morceau = _preparer_morceau_libre(
                 morceaux_proposes, libelle_choisi
             )
-            fichier_temporaire = chemin_audio
             musique_protegee = False
 
             licence = (
@@ -251,20 +323,21 @@ def generer(
                 "version publiable."
             )
 
-        return str(resultat["video"]), message, credits, resultat["lyrics"]
+        # Mémorisé pour permettre « Corriger et refaire » sans retranscrire.
+        session = {
+            "audio": str(chemin_audio),
+            "transcription": resultat["transcription"],
+            "clips": resultat["clip_ids"],
+            "credit_musique": credit_musique,
+        }
+
+        return str(resultat["video"]), message, credits, resultat["lyrics"], session
 
     except pipeline.PipelineError as erreur:
-        return None, f"❌ {erreur}", "", ""
+        return None, f"❌ {erreur}", "", "", {}
     except Exception as erreur:  # filet : jamais de trace Python à l'écran
         traceback.print_exc()
-        return None, f"❌ Erreur inattendue : {erreur}", "", ""
-
-    finally:
-        if fichier_temporaire is not None:
-            try:
-                fichier_temporaire.unlink(missing_ok=True)
-            except OSError:
-                pass
+        return None, f"❌ Erreur inattendue : {erreur}", "", "", {}
 
 
 # --- Construction de l'interface ---------------------------------------------
@@ -287,6 +360,10 @@ def construire_interface() -> gr.Blocks:
         gr.Markdown(INTRODUCTION, elem_id="accroche")
 
         etat_morceaux = gr.State([])
+        # Retient la dernière génération : fichier audio, transcription et
+        # clips déjà utilisés. C'est ce qui permet de refaire la vidéo sans
+        # repasser par Whisper.
+        etat_session = gr.State({})
 
         # --- 1. La musique ---
         # Le dépôt de fichier est le geste principal : il occupe l'écran.
@@ -341,10 +418,18 @@ def construire_interface() -> gr.Blocks:
         video = gr.Video(label="Ton edit", height=520)
         credits = gr.Markdown("")
 
-        with gr.Accordion("Paroles transcrites", open=False):
-            paroles = gr.Textbox(
-                label="", lines=8, show_copy_button=True, container=False
+        with gr.Accordion("✏️ Corriger les paroles", open=False):
+            gr.Markdown(
+                "La transcription se trompe parfois, surtout sur l'argot et les "
+                "noms propres. Corrige les mots ici, puis relance : les visuels "
+                "sont renouvelés au passage.\n\n"
+                "*Garde une ligne par phrase — n'en ajoute pas, n'en supprime pas.*"
             )
+            paroles = gr.Textbox(
+                label="", lines=10, show_copy_button=True,
+                container=False, interactive=True,
+            )
+            bouton_refaire = gr.Button("🔄 Refaire avec ces paroles", variant="secondary")
 
         with gr.Accordion("Réglages avancés", open=False):
             with gr.Row():
@@ -381,7 +466,13 @@ def construire_interface() -> gr.Blocks:
             generer,
             inputs=[fichier, etat_morceaux, choix_morceau, sans_musique,
                     modele, langue],
-            outputs=[video, message, credits, paroles],
+            outputs=[video, message, credits, paroles, etat_session],
+        )
+
+        bouton_refaire.click(
+            refaire,
+            inputs=[etat_session, paroles, sans_musique],
+            outputs=[video, message, credits, etat_session],
         )
 
     return demo

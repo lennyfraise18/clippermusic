@@ -34,6 +34,8 @@ def generate_clip(
     approach: str = "single",
     progress: Callable[[str], None] | None = None,
     inclure_audio: bool = True,
+    transcription_prete: dict | None = None,
+    clips_a_eviter: set[str] | None = None,
 ) -> dict:
     """Fabrique le clip complet et renvoie un dictionnaire de résultat.
 
@@ -67,9 +69,16 @@ def generate_clip(
         audio.validate_audio(audio_path)
 
         # --- 2. Transcription alignée ---------------------------------------
-        result = transcribe.transcribe_audio(
-            audio_path, model_name=model_name, language=language, progress=step
-        )
+        # Une transcription déjà calculée (paroles corrigées à la main, ou
+        # simple relance pour changer les visuels) évite de refaire l'étape la
+        # plus longue du pipeline.
+        if transcription_prete is not None:
+            step("Reprise des paroles corrigées…")
+            result = transcription_prete
+        else:
+            result = transcribe.transcribe_audio(
+                audio_path, model_name=model_name, language=language, progress=step
+            )
         segments = result["segments"]
         detected_language = result["language"]
 
@@ -93,6 +102,12 @@ def generate_clip(
 
         step(f"Recherche de {len(shots)} vidéos de fond…")
         finder = videos.ClipFinder(work_dir)
+
+        # Sur une régénération, on écarte les clips déjà vus : l'utilisateur
+        # qui reclique veut d'autres images, pas les mêmes.
+        if clips_a_eviter:
+            finder.used_ids.update(clips_a_eviter)
+
         usable_shots = []
 
         for index, shot in enumerate(shots, start=1):
@@ -170,6 +185,9 @@ def generate_clip(
             "duration": result["duration"],
             "language": detected_language,
             "muet": not inclure_audio,
+            # Renvoyée telle quelle pour permettre une régénération sans
+            # repasser par Whisper (correction des paroles, autres visuels).
+            "transcription": result,
             "warnings": warnings,
             "seconds": round(time.time() - started_at, 1),
         }
@@ -226,5 +244,28 @@ def _prune_old_outputs() -> None:
         )
         for stale in files[KEEP_LAST_OUTPUTS:]:
             stale.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+# Un morceau téléchargé doit survivre à la génération : l'utilisateur peut
+# vouloir corriger les paroles et refaire la vidéo sans tout retélécharger.
+# On le garde donc une heure, puis on nettoie.
+DUREE_VIE_AUDIO_TEMPORAIRE = 3600
+
+
+def purger_audios_temporaires() -> None:
+    """Supprime les morceaux téléchargés qui ne servent plus.
+
+    Appelée à chaque génération : sans elle, le disque d'un Space gratuit se
+    remplit d'un MP3 par recherche.
+    """
+    import time as _time
+
+    try:
+        maintenant = _time.time()
+        for fichier in config.WORK_DIR.glob("jamendo_*.mp3"):
+            if maintenant - fichier.stat().st_mtime > DUREE_VIE_AUDIO_TEMPORAIRE:
+                fichier.unlink(missing_ok=True)
     except OSError:
         pass
