@@ -33,6 +33,7 @@ def generate_clip(
     language: str | None = None,
     approach: str = "single",
     progress: Callable[[str], None] | None = None,
+    inclure_audio: bool = True,
 ) -> dict:
     """Fabrique le clip complet et renvoie un dictionnaire de résultat.
 
@@ -147,6 +148,7 @@ def generate_clip(
             work_dir=work_dir,
             approach=approach,
             progress=step,
+            inclure_audio=inclure_audio,
         )
 
         # La vidéo sort du dossier de travail avant que celui-ci soit effacé.
@@ -167,6 +169,7 @@ def generate_clip(
             "shots": len(usable_shots),
             "duration": result["duration"],
             "language": detected_language,
+            "muet": not inclure_audio,
             "warnings": warnings,
             "seconds": round(time.time() - started_at, 1),
         }

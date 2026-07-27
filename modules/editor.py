@@ -168,24 +168,33 @@ def render_single_pass(
     output_name: str,
     work_dir: Path,
     progress: Callable[[str], None] | None = None,
+    inclure_audio: bool = True,
 ) -> Path:
     """Monte la vidéo complète en une seule commande ffmpeg.
 
     Chaque plan doit contenir : clip_name, clip_offset, clip_duration, start, end.
     Tous les noms de fichiers sont RELATIFS à `work_dir`.
+
+    `inclure_audio=False` produit une vidéo MUETTE, images et sous-titres
+    seulement. C'est le format attendu par les monteurs d'edits : on ajoute
+    ensuite la musique depuis la bibliothèque de TikTok ou d'Instagram, qui est
+    sous licence — le son n'est alors ni coupé ni bloqué, contrairement à un
+    enregistrement intégré au fichier.
     """
     if not shots:
         raise EditError("Aucun plan à monter.")
 
     if progress:
-        progress(f"Montage de {len(shots)} plans en une passe…")
+        muet = " (sans musique)" if not inclure_audio else ""
+        progress(f"Montage de {len(shots)} plans en une passe{muet}…")
 
     arguments: list[str] = []
     for shot in shots:
         arguments += _input_arguments(shot)
 
     audio_index = len(shots)
-    arguments += ["-i", audio_name]
+    if inclure_audio:
+        arguments += ["-i", audio_name]
 
     # Un filtre scale+crop par plan, puis un concat, puis les sous-titres.
     filters = []
@@ -200,15 +209,29 @@ def render_single_pass(
     arguments += [
         "-filter_complex", ";".join(filters),
         "-map", "[vout]",
-        "-map", f"{audio_index}:a",
+    ]
+
+    if inclure_audio:
+        arguments += [
+            "-map", f"{audio_index}:a",
+            "-c:a", "aac", "-b:a", "192k",
+        ]
+    else:
+        arguments += ["-an"]
+
+    arguments += [
         "-c:v", encoder,
         *config.encoder_options(encoder),
-        "-c:a", "aac", "-b:a", "192k",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
-        "-shortest",
-        output_name,
     ]
+
+    # -shortest cale la vidéo sur la piste la plus courte. Sans piste audio,
+    # l'option n'a aucun sens et ffmpeg s'en plaint.
+    if inclure_audio:
+        arguments += ["-shortest"]
+
+    arguments += [output_name]
 
     _run_ffmpeg(arguments, cwd=work_dir)
     return work_dir / output_name
@@ -295,14 +318,21 @@ def render(
     work_dir: Path,
     approach: str = "single",
     progress: Callable[[str], None] | None = None,
+    inclure_audio: bool = True,
 ) -> Path:
     """Point d'entrée du montage. `approach` vaut "single" (B) ou "two_pass" (A)."""
     if approach == "two_pass":
+        if not inclure_audio:
+            raise EditError(
+                "L'export sans musique n'est disponible qu'avec le montage "
+                "en une passe."
+            )
         return render_two_pass(
             shots, audio_name, subtitle_name, output_name, work_dir, progress
         )
     return render_single_pass(
-        shots, audio_name, subtitle_name, output_name, work_dir, progress
+        shots, audio_name, subtitle_name, output_name, work_dir, progress,
+        inclure_audio=inclure_audio,
     )
 
 
