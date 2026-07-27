@@ -17,6 +17,7 @@ Lancement en local :
     .venv\\Scripts\\python.exe app.py
 """
 
+import os
 import traceback
 from pathlib import Path
 
@@ -357,8 +358,23 @@ if __name__ == "__main__":
     if not videos.has_any_key():
         print("ATTENTION : " + videos.missing_key_message())
 
+    # Lien public temporaire.
+    # Sur un Space Hugging Face, l'adresse publique est fournie par la plateforme
+    # et cette option reste désactivée. En local, la passer à 1 crée un tunnel
+    # *.gradio.live valable une semaine : de quoi montrer la démo à distance
+    # sans dépendre d'un quota d'hébergement.
+    #     Windows :  set GRADIO_SHARE=1  puis  .venv\Scripts\python.exe app.py
+    partager = os.getenv("GRADIO_SHARE", "").strip() in {"1", "true", "yes"}
+
+    if partager:
+        print("\nLien public temporaire activé (valable ~1 semaine).")
+        print("L'adresse *.gradio.live s'affiche ci-dessous : elle rend cette")
+        print("application accessible depuis internet tant que ce terminal")
+        print("reste ouvert. Ferme-le pour couper l'accès.\n")
+
     construire_interface().queue(max_size=8).launch(
         server_name="0.0.0.0",
         server_port=7860,
+        share=partager,
         show_error=True,
     )

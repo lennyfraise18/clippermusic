@@ -184,6 +184,27 @@ Puis ouvre **http://localhost:7860** dans un navigateur.
 
 ---
 
+### 6. Obtenir un lien public sans hébergement
+
+Si le Space n'est pas disponible (quota, compte non vérifié), Gradio sait créer
+un tunnel public temporaire depuis ta propre machine — pratique pour montrer la
+démo à distance :
+
+```bash
+set GRADIO_SHARE=1
+```
+
+```bash
+.venv\Scripts\python.exe app.py
+```
+
+Une adresse en `*.gradio.live` s'affiche dans le terminal. Elle reste valable
+environ une semaine **tant que le terminal reste ouvert** : l'application tourne
+sur ta machine, le lien n'est qu'une porte d'entrée. Ferme le terminal pour
+couper l'accès.
+
+---
+
 ## 🧪 Tests
 
 Chaque brique se teste séparément — c'est ce qui permet de savoir *quelle* étape
