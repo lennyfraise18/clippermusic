@@ -331,33 +331,210 @@ def generer(
             "credit_musique": credit_musique,
         }
 
-        return str(resultat["video"]), message, credits, resultat["lyrics"], session
+        return (
+            str(resultat["video"]), message, credits, resultat["lyrics"],
+            session, gr.update(visible=True),
+        )
 
     except pipeline.PipelineError as erreur:
-        return None, f"❌ {erreur}", "", "", {}
+        return None, f"❌ {erreur}", "", "", {}, gr.update(visible=False)
     except Exception as erreur:  # filet : jamais de trace Python à l'écran
         traceback.print_exc()
-        return None, f"❌ Erreur inattendue : {erreur}", "", "", {}
+        return (
+            None, f"❌ Erreur inattendue : {erreur}", "", "", {},
+            gr.update(visible=False),
+        )
 
 
 # --- Construction de l'interface ---------------------------------------------
 
+# Identité visuelle : clavier de piano. Noir profond, blanc ivoire, et des
+# notes qui montent lentement en fond. Tout est en CSS pur — aucune image, donc
+# rien à charger et rien à casser dans le conteneur du Space.
 CSS = """
-.gradio-container {max-width: 860px !important; margin: auto !important;}
-#titre {text-align: center; margin-bottom: 0;}
-#accroche {text-align: center; color: #6b7280; margin-top: 0.2rem;}
-#bouton-principal {font-size: 1.1rem !important; padding: 0.9rem !important;}
+.gradio-container {
+    max-width: 880px !important;
+    margin: auto !important;
+    background: radial-gradient(ellipse at top, #16161a 0%, #0a0a0c 60%) !important;
+}
+
+/* --- Bandeau titre --- */
+#entete {
+    position: relative;
+    overflow: hidden;
+    border-radius: 18px;
+    padding: 2.4rem 1rem 2rem;
+    margin-bottom: 1.4rem;
+    background: linear-gradient(160deg, #1c1c22 0%, #0d0d10 100%);
+    border: 1px solid rgba(255,255,255,0.09);
+}
+#entete h1 {
+    margin: 0;
+    text-align: center;
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #fdfdfd;
+    text-shadow: 0 2px 24px rgba(255,255,255,0.18);
+}
+#entete p {
+    text-align: center;
+    color: #9ba1ad;
+    margin: 0.55rem auto 0;
+    max-width: 30rem;
+    line-height: 1.5;
+}
+
+/* --- Clavier de piano sous le titre --- */
+.clavier {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 1.5rem;
+    height: 42px;
+}
+.touche {
+    width: 17px;
+    border-radius: 0 0 4px 4px;
+    background: linear-gradient(180deg, #ffffff 0%, #d6d6d6 100%);
+    animation: enfoncer 3.4s ease-in-out infinite;
+}
+.touche.noire {
+    width: 11px;
+    height: 62%;
+    background: linear-gradient(180deg, #33333a 0%, #101014 100%);
+    margin: 0 -7px;
+    z-index: 2;
+}
+@keyframes enfoncer {
+    0%, 88%, 100% { transform: translateY(0); opacity: 0.85; }
+    92%           { transform: translateY(4px); opacity: 1; }
+}
+.touche:nth-child(2n)  { animation-delay: 0.4s; }
+.touche:nth-child(3n)  { animation-delay: 0.9s; }
+.touche:nth-child(5n)  { animation-delay: 1.6s; }
+.touche:nth-child(7n)  { animation-delay: 2.3s; }
+
+/* --- Notes qui montent en fond --- */
+.note {
+    position: absolute;
+    bottom: -22px;
+    color: rgba(255,255,255,0.16);
+    font-size: 1.5rem;
+    animation: monter 9s linear infinite;
+    pointer-events: none;
+}
+@keyframes monter {
+    0%   { transform: translateY(0) rotate(0deg);      opacity: 0; }
+    12%  { opacity: 0.9; }
+    80%  { opacity: 0.45; }
+    100% { transform: translateY(-230px) rotate(22deg); opacity: 0; }
+}
+.note:nth-child(1) { left: 11%; animation-delay: 0s;   }
+.note:nth-child(2) { left: 27%; animation-delay: 2.1s; font-size: 1.1rem; }
+.note:nth-child(3) { left: 49%; animation-delay: 4.3s; }
+.note:nth-child(4) { left: 71%; animation-delay: 1.2s; font-size: 1.9rem; }
+.note:nth-child(5) { left: 87%; animation-delay: 6s;   font-size: 1.2rem; }
+
+/* --- Bouton principal --- */
+#bouton-principal {
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
+    padding: 1rem !important;
+    border-radius: 12px !important;
+    background: linear-gradient(135deg, #ffffff 0%, #c9c9d1 100%) !important;
+    color: #0a0a0c !important;
+    border: none !important;
+    transition: transform .16s ease, box-shadow .16s ease !important;
+}
+#bouton-principal:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(255,255,255,0.22) !important;
+}
+
+/* --- Bloc de partage --- */
+#partage {
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    padding: 1.1rem 1.3rem;
+    background: linear-gradient(160deg, #17171c 0%, #0e0e11 100%);
+}
+#partage h3 { margin-top: 0; color: #fdfdfd; }
+
+/* --- Zone de dépôt --- */
+.gradio-container .wrap.svelte-1ipelgc { border-radius: 14px !important; }
+"""
+
+# Bandeau HTML du haut : clavier animé + notes qui montent.
+ENTETE_HTML = """
+<div id="entete">
+  <span class="note">&#9835;</span>
+  <span class="note">&#9834;</span>
+  <span class="note">&#9839;</span>
+  <span class="note">&#9836;</span>
+  <span class="note">&#9834;</span>
+  <h1>&#127916; ClipperMusic</h1>
+  <p>Dépose une chanson, récupère un clip vertical avec les paroles
+     en karaoké. Prêt à poster.</p>
+  <div class="clavier">
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div>
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div>
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div><div class="touche noire"></div>
+    <div class="touche"></div>
+  </div>
+</div>
+"""
+
+# Affiché sous la vidéo une fois le clip prêt.
+PARTAGE_HTML = """
+<div id="partage">
+  <h3>&#128229; Récupérer et publier</h3>
+  <p><b>1.</b> Survole la vidéo et clique sur l'icône de téléchargement
+     (&#11015;&#65039;) en haut à droite du lecteur.</p>
+  <p><b>2.</b> Envoie le fichier sur ton téléphone — AirDrop, Google Drive,
+     ou en te l'envoyant par message.</p>
+  <p><b>3.</b> Publie&nbsp;:</p>
+  <ul>
+    <li><b>TikTok</b> &rarr; Créer &rarr; Importer &rarr; ta vidéo</li>
+    <li><b>Instagram Reels</b> &rarr; + &rarr; Reel &rarr; ta vidéo</li>
+    <li><b>YouTube Shorts</b> &rarr; + &rarr; Créer un Short</li>
+  </ul>
+  <p style="color:#9ba1ad;font-size:0.92em;margin-bottom:0">
+     Le format 1080&times;1920 est déjà le bon&nbsp;: aucun recadrage à faire.</p>
+</div>
 """
 
 
 def construire_interface() -> gr.Blocks:
     # Note : Gradio 5 avertit que `theme` passera dans launch() en version 6,
     # mais launch() ne l'accepte pas encore. On reste sur Blocks().
-    with gr.Blocks(
-        title="ClipperMusic", theme=gr.themes.Soft(), css=CSS
-    ) as demo:
-        gr.Markdown(f"# {TITRE}", elem_id="titre")
-        gr.Markdown(INTRODUCTION, elem_id="accroche")
+    # Thème sombre imposé : l'identité visuelle repose sur le contraste
+    # noir/ivoire d'un clavier, elle n'a pas de sens en clair.
+    theme = gr.themes.Base(
+        primary_hue=gr.themes.colors.gray,
+        neutral_hue=gr.themes.colors.gray,
+        font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
+    ).set(
+        body_background_fill="#0a0a0c",
+        body_background_fill_dark="#0a0a0c",
+        block_background_fill="#141419",
+        block_background_fill_dark="#141419",
+        block_border_color="rgba(255,255,255,0.10)",
+        block_label_text_color="#e8e8ec",
+        body_text_color="#e8e8ec",
+        body_text_color_subdued="#9ba1ad",
+        input_background_fill="#1b1b21",
+        border_color_primary="rgba(255,255,255,0.12)",
+    )
+
+    with gr.Blocks(title="ClipperMusic", theme=theme, css=CSS) as demo:
+        gr.HTML(ENTETE_HTML)
 
         etat_morceaux = gr.State([])
         # Retient la dernière génération : fichier audio, transcription et
@@ -415,7 +592,12 @@ def construire_interface() -> gr.Blocks:
 
         # --- 4. Le résultat ---
         message = gr.Markdown("*Compte une à trois minutes.*")
-        video = gr.Video(label="Ton edit", height=520)
+        video = gr.Video(label="Ton clip", height=520, show_download_button=True)
+
+        # Le mode d'emploi de publication n'apparaît qu'une fois le clip prêt :
+        # avant, il n'aurait rien à quoi se rapporter.
+        bloc_partage = gr.HTML(PARTAGE_HTML, visible=False)
+
         credits = gr.Markdown("")
 
         with gr.Accordion("✏️ Corriger les paroles", open=False):
@@ -466,7 +648,7 @@ def construire_interface() -> gr.Blocks:
             generer,
             inputs=[fichier, etat_morceaux, choix_morceau, sans_musique,
                     modele, langue],
-            outputs=[video, message, credits, paroles, etat_session],
+            outputs=[video, message, credits, paroles, etat_session, bloc_partage],
         )
 
         bouton_refaire.click(
