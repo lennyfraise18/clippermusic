@@ -30,8 +30,10 @@ from modules import audio, config, liens, pipeline, videos
 TITRE = "🎬 Clip Paroles"
 
 INTRODUCTION = (
-    "Ta musique devient un edit vertical avec les paroles en karaoké et des "
-    "visuels choisis automatiquement. **Prêt à poster.**"
+    "Dépose une chanson, récupère un edit vertical avec les paroles en karaoké "
+    "et des visuels choisis automatiquement.<br>"
+    "<sub>Transcription et montage entièrement automatiques — aucune "
+    "intervention manuelle.</sub>"
 )
 
 # Affiché quand l'utilisateur colle un lien YouTube / Spotify / Deezer.
@@ -287,32 +289,38 @@ def construire_interface() -> gr.Blocks:
         etat_morceaux = gr.State([])
 
         # --- 1. La musique ---
+        # Le dépôt de fichier est le geste principal : il occupe l'écran.
+        # Chercher une musique libre est un cas secondaire, donc replié.
         fichier = gr.Audio(
-            label="Dépose ton fichier audio",
+            label="🎵 Dépose ton fichier audio ici",
             type="filepath",
             sources=["upload"],
         )
 
-        lien = gr.Textbox(
-            label="…ou colle un lien",
-            placeholder="https://youtube.com/…  ·  spotify  ·  deezer  ·  ou un style : « pop »",
-            info="On identifie le morceau et on te propose des musiques libres de droits.",
-        )
-
-        message_lien = gr.Markdown("", visible=False)
-
         with gr.Accordion(
-            "Pourquoi le son ne vient pas du lien", open=False, visible=False
-        ) as detail_lien:
-            gr.Markdown(EXPLICATION_LIEN)
+            "Je n'ai pas de fichier — trouver une musique libre de droits",
+            open=False,
+        ):
+            lien = gr.Textbox(
+                label="Un style, ou un lien YouTube / Spotify / Deezer",
+                placeholder="pop · rock · acoustic · ou colle un lien",
+                info="On identifie le morceau et on propose des musiques "
+                     "libres de droits utilisables directement.",
+            )
+            message_lien = gr.Markdown("", visible=False)
 
-        choix_morceau = gr.Dropdown(
-            choices=[],
-            label="Morceaux libres de droits",
-            interactive=True,
-            allow_custom_value=True,
-            visible=False,
-        )
+            with gr.Accordion(
+                "Pourquoi le son ne vient pas du lien", open=False, visible=False
+            ) as detail_lien:
+                gr.Markdown(EXPLICATION_LIEN)
+
+            choix_morceau = gr.Dropdown(
+                choices=[],
+                label="Morceaux libres de droits",
+                interactive=True,
+                allow_custom_value=True,
+                visible=False,
+            )
 
         # --- 2. L'option qui compte ---
         sans_musique = gr.Checkbox(
