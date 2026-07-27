@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Generateur de clips paroles - lien public
+title ClipperMusic - lien public
 
 echo.
 echo   Demarrage en cours, patiente une trentaine de secondes...

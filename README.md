@@ -1,5 +1,5 @@
 ---
-title: Générateur de clips paroles
+title: ClipperMusic
 emoji: 🎬
 colorFrom: purple
 colorTo: blue
@@ -9,7 +9,7 @@ pinned: false
 license: mit
 ---
 
-# 🎬 Générateur automatique de clips paroles
+# 🎬 ClipperMusic
 
 Transforme une chanson en **vidéo verticale 1080×1920** avec les paroles en
 **karaoké synchronisé mot par mot**, illustrée automatiquement par des extraits

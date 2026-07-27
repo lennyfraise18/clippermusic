@@ -1,4 +1,4 @@
-"""Interface Gradio du générateur de clips paroles.
+"""ClipperMusic — interface Gradio du générateur de clips paroles.
 
 Une seule application : l'interface, le pipeline et les fichiers vivent dans le
 même processus, hébergé sur un Space Hugging Face gratuit.
@@ -27,7 +27,7 @@ from modules import audio, config, liens, pipeline, transcribe, videos
 
 # --- Textes de l'interface ---------------------------------------------------
 
-TITRE = "🎬 Clip Paroles"
+TITRE = "🎬 ClipperMusic"
 
 INTRODUCTION = (
     "Dépose une chanson, récupère un edit vertical avec les paroles en karaoké "
@@ -354,7 +354,7 @@ def construire_interface() -> gr.Blocks:
     # Note : Gradio 5 avertit que `theme` passera dans launch() en version 6,
     # mais launch() ne l'accepte pas encore. On reste sur Blocks().
     with gr.Blocks(
-        title="Clip Paroles", theme=gr.themes.Soft(), css=CSS
+        title="ClipperMusic", theme=gr.themes.Soft(), css=CSS
     ) as demo:
         gr.Markdown(f"# {TITRE}", elem_id="titre")
         gr.Markdown(INTRODUCTION, elem_id="accroche")
