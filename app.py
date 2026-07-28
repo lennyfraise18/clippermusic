@@ -442,8 +442,9 @@ CSS = """
 }
 
 .gradio-container {
-    max-width: 880px !important;
+    max-width: 620px !important;
     margin: auto !important;
+    padding: 0 0.6rem !important;
     background:
         radial-gradient(ellipse 70% 50% at 20% 0%, rgba(168,85,247,0.16), transparent 60%),
         radial-gradient(ellipse 60% 45% at 85% 8%, rgba(34,211,238,0.13), transparent 60%),
@@ -454,9 +455,9 @@ CSS = """
 #entete {
     position: relative;
     overflow: hidden;
-    border-radius: 22px;
-    padding: 2.6rem 1rem 2.1rem;
-    margin-bottom: 1.5rem;
+    border-radius: 18px;
+    padding: 1.7rem 0.9rem 1.4rem;
+    margin-bottom: 1rem;
     background: linear-gradient(160deg, #1a1a26 0%, #0b0b11 100%);
     border: 1px solid rgba(168,85,247,0.22);
     box-shadow: 0 0 60px rgba(168,85,247,0.10) inset,
@@ -484,7 +485,7 @@ CSS = """
 #entete h1 {
     margin: 0;
     text-align: center;
-    font-size: 2.7rem;
+    font-size: 2rem;
     font-weight: 800;
     letter-spacing: -0.03em;
     background-image: linear-gradient(100deg, #ffffff 0%, #a855f7 42%,
@@ -497,9 +498,10 @@ CSS = """
 #entete p {
     text-align: center;
     color: #9ba1ad;
-    margin: 0.55rem auto 0;
-    max-width: 30rem;
-    line-height: 1.5;
+    margin: 0.45rem auto 0;
+    max-width: 26rem;
+    font-size: 0.92rem;
+    line-height: 1.45;
 }
 
 /* --- Égaliseur : des barres qui battent, comme sur une platine --- */
@@ -507,12 +509,12 @@ CSS = """
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    gap: 5px;
-    height: 46px;
-    margin-top: 1.6rem;
+    gap: 4px;
+    height: 30px;
+    margin-top: 1rem;
 }
 .barre {
-    width: 6px;
+    width: 5px;
     border-radius: 3px;
     background-image: linear-gradient(180deg, #22d3ee, #a855f7 55%, #ec4899);
     box-shadow: 0 0 12px rgba(168,85,247,0.55);
@@ -536,12 +538,12 @@ CSS = """
 .clavier {
     display: flex;
     justify-content: center;
-    gap: 3px;
-    margin-top: 1.1rem;
-    height: 38px;
+    gap: 2px;
+    margin-top: 0.7rem;
+    height: 26px;
 }
 .touche {
-    width: 17px;
+    width: 13px;
     border-radius: 0 0 4px 4px;
     background: linear-gradient(180deg, #ffffff 0%, #cfcfda 100%);
     animation: enfoncer 3.4s ease-in-out infinite;
@@ -689,6 +691,53 @@ CSS = """
     border: 1px dashed rgba(168,85,247,0.4) !important;
     background: linear-gradient(160deg, rgba(168,85,247,0.06), transparent 70%) !important;
 }
+
+/* Le lecteur ne doit pas manger tout l'écran d'un téléphone. */
+.gradio-container video {
+    max-height: 62vh !important;
+    width: auto !important;
+    margin: auto !important;
+}
+
+/* --- Téléphones ---
+   L'outil produit des vidéos verticales : une bonne partie des visites vient
+   d'un téléphone, souvent pour envoyer le clip juste après l'avoir créé. */
+@media (max-width: 640px) {
+    .gradio-container { padding: 0 0.4rem !important; }
+
+    #entete {
+        padding: 1.2rem 0.7rem 1rem;
+        border-radius: 14px;
+    }
+    #entete h1 { font-size: 1.55rem; }
+    #entete p  { font-size: 0.85rem; }
+
+    .egaliseur { height: 22px; gap: 3px; margin-top: 0.8rem; }
+    .barre     { width: 4px; }
+    .clavier   { height: 20px; margin-top: 0.5rem; }
+    .touche    { width: 10px; }
+    .touche.noire { width: 7px; margin: 0 -4px; }
+
+    .tag { font-size: 0.68rem; padding: 4px 10px; }
+    .plateformes { gap: 6px; margin-top: 0.8rem; }
+
+    .separateur { font-size: 0.75rem; letter-spacing: 0.12em; }
+
+    .gradio-container button#bouton-principal {
+        font-size: 1.02rem !important;
+        padding: 0.85rem !important;
+    }
+
+    #partage { padding: 0.9rem 1rem; }
+    #partage ul { margin-left: 0.9rem; }
+
+    /* Les réglages passent l'un sous l'autre au lieu de se serrer. */
+    .gradio-container .form > .block { min-width: 100% !important; }
+
+    /* Le clavier disparaît : l'égaliseur suffit comme signature musicale,
+       et ces 30 pixels comptent quand l'écran fait 812 px de haut. */
+    .clavier { display: none; }
+}
 """
 
 # Bandeau HTML du haut : clavier animé + notes qui montent.
@@ -827,7 +876,9 @@ def construire_interface() -> gr.Blocks:
 
         # --- 4. Le résultat ---
         message = gr.Markdown("*Compte une à trois minutes.*")
-        video = gr.Video(label="Ton clip", height=520, show_download_button=True)
+        # Pas de hauteur fixe : le CSS la borne à 62 % de la fenêtre, ce qui
+        # évite qu'un clip vertical remplisse tout l'écran d'un téléphone.
+        video = gr.Video(label="Ton clip", show_download_button=True)
 
         # Le mode d'emploi de publication n'apparaît qu'une fois le clip prêt :
         # avant, il n'aurait rien à quoi se rapporter.
