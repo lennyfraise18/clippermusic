@@ -63,7 +63,7 @@ def test_disponibilite(url: str) -> bool:
     ok = controle("le service répond", reponse.status_code == 200,
                   f"HTTP {reponse.status_code}")
     controle("l'interface est bien ClipperMusic", "ClipperMusic" in reponse.text)
-    controle("l'identité visuelle est chargée", "clavier" in reponse.text)
+    controle("l'identité visuelle est chargée", "egaliseur" in reponse.text)
     return ok
 
 

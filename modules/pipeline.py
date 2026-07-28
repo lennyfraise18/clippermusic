@@ -95,6 +95,20 @@ def generate_clip(
 
         # --- 4. Découpage en plans ------------------------------------------
         shots = editor.plan_shots(segments, result["duration"])
+
+        # Les coupes glissent vers le temps fort le plus proche : c'est ce qui
+        # fait qu'un montage « tombe juste » à l'oreille.
+        temps_forts = result.get("temps_forts") or []
+        if temps_forts:
+            from modules import rythme
+
+            avant = [s["start"] for s in shots]
+            shots = rythme.caler_sur_temps_forts(shots, temps_forts)
+            deplacees = sum(
+                1 for a, s in zip(avant, shots) if abs(a - s["start"]) > 0.01
+            )
+            if deplacees:
+                step(f"{deplacees} coupes calées sur le rythme…")
         if not shots:
             raise PipelineError("Impossible de construire un montage à partir de ces paroles.")
 

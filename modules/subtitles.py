@@ -23,7 +23,9 @@ from modules import config
 COLOR_SUNG = "&H00FFFFFF"       # blanc  (PrimaryColour  = déjà chanté)
 COLOR_PENDING = "&H0040D4FF"    # jaune  (SecondaryColour = pas encore chanté)
 COLOR_OUTLINE = "&H00000000"    # noir
-COLOR_SHADOW = "&H90000000"     # noir semi-transparent
+# Ombre violette plutôt que noire : elle rattache le texte à l'identité de
+# l'application et détache mieux les lettres sur un fond sombre.
+COLOR_SHADOW = "&H80F755A8"     # violet semi-transparent (BGR + alpha)
 
 # Une ligne trop longue déborde de l'écran vertical.
 #
@@ -88,8 +90,26 @@ def split_into_lines(words: list[dict]) -> list[list[dict]]:
 
 
 def _karaoke_text(line: list[dict]) -> str:
-    """Construit le texte ASS d'une ligne, avec une balise \\k par mot."""
-    parts = ["{\\fad(120,120)}"]
+    """Construit le texte ASS d'une ligne, avec une balise karaoké par mot.
+
+    Deux choix qui font la différence visuelle :
+
+    - `\\kf` plutôt que `\\k` : la couleur **balaie** le mot de gauche à droite
+      au lieu de basculer d'un coup. Le résultat suit la voix au lieu de
+      clignoter dessus.
+
+    - un léger zoom à l'apparition de la ligne (`\\t` sur `\\fscx`/`\\fscy`) :
+      le texte entre en scène au lieu d'apparaître. C'est ce qui donne le
+      côté « lyric video » des edits qui tournent.
+    """
+    duree_ligne = max(line[-1]["end"] - line[0]["start"], 0.1)
+    entree = min(int(duree_ligne * 1000 * 0.18), 260)
+
+    parts = [
+        # Fondu court, puis passage de 88 % à 100 % de taille : discret, mais
+        # suffisant pour que l'oeil accroche la nouvelle ligne.
+        f"{{\\fad(90,110)\\fscx88\\fscy88\\t(0,{entree},\\fscx100\\fscy100)}}"
+    ]
     cursor = line[0]["start"]
 
     for word in line:
@@ -97,10 +117,10 @@ def _karaoke_text(line: list[dict]) -> str:
         # la surbrillance prend de l'avance sur la voix.
         gap = int(round((word["start"] - cursor) * 100))
         if gap > 0:
-            parts.append(f"{{\\k{gap}}}")
+            parts.append(f"{{\\kf{gap}}}")
 
         duration = int(round((word["end"] - word["start"]) * 100))
-        parts.append(f"{{\\k{max(duration, 1)}}}{escape_text(word['text'])} ")
+        parts.append(f"{{\\kf{max(duration, 1)}}}{escape_text(word['text'])} ")
         cursor = word["end"]
 
     return "".join(parts).rstrip()

@@ -79,7 +79,27 @@ def _scale_crop(
             f"crop={largeur}:{hauteur}:x='{decalage_x}':y='{decalage_y}'"
         )
 
-    return f"{base},fps={config.VIDEO_FPS},setsar=1,format=yuv420p"
+    etapes = [base]
+
+    # Étalonnage : les vidéos de banque sont volontairement neutres pour rester
+    # utilisables partout, ce qui les rend ternes sur un edit. On remonte
+    # légèrement contraste et saturation.
+    if config.ETALONNAGE_ACTIF:
+        etapes.append("eq=contrast=1.12:saturation=1.22:brightness=-0.015")
+
+    # Vignettage : assombrit les bords, ce qui ramène l'oeil au centre — là où
+    # se trouvent le sujet et les paroles.
+    if config.VIGNETTE_ACTIVE:
+        etapes.append("vignette=PI/5")
+
+    # Fondu d'entrée très court : adoucit la coupe sans la ralentir.
+    if duree > 0.6:
+        etapes.append(f"fade=t=in:st=0:d=0.12")
+
+    etapes.append(f"fps={config.VIDEO_FPS}")
+    etapes.append("setsar=1")
+    etapes.append("format=yuv420p")
+    return ",".join(etapes)
 
 
 # --- Découpage de la timeline en plans --------------------------------------

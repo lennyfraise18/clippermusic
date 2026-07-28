@@ -323,6 +323,20 @@ def transcrire_directement(
         progress("Sélection du moment fort…")
     resultat = _select_best_window(segments, langue_detectee, rang_passage)
 
+    # Temps forts de l'extrait retenu : le montage y calera ses coupes.
+    # Calculé ici parce que le signal est déjà chargé en mémoire — le refaire
+    # ailleurs voudrait dire relire et redécoder le fichier.
+    try:
+        from modules import rythme
+
+        debut = int(resultat["start_offset"] * 16000)
+        fin = debut + int(resultat["duration"] * 16000)
+        resultat["temps_forts"] = rythme.detecter_temps_forts(audio[debut:fin])
+    except Exception:
+        # Un défaut de détection ne doit pas empêcher de produire un clip :
+        # sans temps forts, le montage garde ses coupes régulières.
+        resultat["temps_forts"] = []
+
     # Les temps calculés sont relatifs au morceau analysé. On les recale sur le
     # fichier d'origine, sinon la bande son serait extraite au mauvais endroit.
     resultat["start_offset"] += decalage

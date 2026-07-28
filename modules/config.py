@@ -162,6 +162,15 @@ ZOOM_ACTIF = os.getenv("ZOOM_ACTIF", "1").strip() not in {"0", "false", "no"}
 # Au-delà, le mouvement devient visible au point de distraire.
 ZOOM_AMPLITUDE = float(os.getenv("ZOOM_AMPLITUDE", "1.12"))
 
+# Étalonnage de l'image : un peu plus de contraste et de couleur que la source.
+# Les vidéos de banque sont volontairement neutres pour rester utilisables
+# partout ; sur un edit, cette neutralité fait terne.
+ETALONNAGE_ACTIF = os.getenv("ETALONNAGE_ACTIF", "1").strip() not in {"0", "false", "no"}
+
+# Vignettage : assombrit les bords pour ramener l'oeil au centre, là où sont
+# le sujet et les paroles. C'est le réglage le plus « cinéma » du lot.
+VIGNETTE_ACTIVE = os.getenv("VIGNETTE_ACTIVE", "1").strip() not in {"0", "false", "no"}
+
 # Refus immédiat des fichiers trop longs ou trop courts (validation à l'upload).
 MIN_AUDIO_SECONDS = 5
 MAX_AUDIO_SECONDS = 60 * 12  # 12 minutes
