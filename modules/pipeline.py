@@ -22,6 +22,11 @@ from modules import audio, config, editor, keywords, subtitles, transcribe, vide
 # Au-delà, les plus anciennes sont supprimées.
 KEEP_LAST_OUTPUTS = 5
 
+# En dessous de cette mémoire, on vide le modèle de transcription avant de
+# lancer le montage. Au-dessus, on le garde en cache : le recharger coûte
+# quelques secondes à chaque traitement.
+SEUIL_LIBERATION_MEMOIRE_MO = 2000
+
 
 class PipelineError(Exception):
     """Erreur de pipeline, message affichable tel quel dans l'interface."""
@@ -138,6 +143,17 @@ def generate_clip(
         # Un plan manquant laisserait un trou : on répartit son temps sur
         # les plans voisins plutôt que de faire un saut dans la musique.
         usable_shots = _close_gaps(usable_shots, result["duration"])
+
+        # --- 5 bis. Libération de la mémoire --------------------------------
+        # Le modèle de transcription a fini son travail, mais il occupe encore
+        # plusieurs centaines de mégaoctets. Or c'est maintenant que ffmpeg va
+        # décoder des vidéos, ce qui est l'étape la plus gourmande. Sur un
+        # conteneur limité, garder le modèle en cache faisait tuer le montage.
+        memoire = config.memoire_disponible_mo()
+        if memoire is not None and memoire < SEUIL_LIBERATION_MEMOIRE_MO:
+            libere = transcribe.decharger_modeles()
+            if libere:
+                step(f"Libération de la mémoire ({libere:.0f} Mo) avant le montage…")
 
         # --- 6. Sous-titres karaoké -----------------------------------------
         step("Génération des sous-titres karaoké…")

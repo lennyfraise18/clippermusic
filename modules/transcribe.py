@@ -59,6 +59,23 @@ BESOIN_MEMOIRE_MO = {"tiny": 200, "base": 350, "small": 700, "medium": 1600}
 MEMOIRE_RESERVEE_MO = 300
 
 
+def decharger_modeles() -> float:
+    """Libère les modèles gardés en mémoire. Renvoie les Mo estimés récupérés.
+
+    Le modèle reste normalement en cache d'un traitement à l'autre, pour éviter
+    de le recharger à chaque fois. Mais pendant le montage, il ne sert plus à
+    rien : il occupe simplement la mémoire dont ffmpeg a besoin pour décoder
+    les vidéos. Sur un conteneur limité, c'est cette occupation inutile qui
+    faisait tuer le montage.
+    """
+    import gc
+
+    recupere = sum(BESOIN_MEMOIRE_MO.get(nom, 0) for nom in _model_cache)
+    _model_cache.clear()
+    gc.collect()
+    return float(recupere)
+
+
 def modele_tenable(demande: str) -> tuple[str, str | None]:
     """Rétrograde le modèle demandé s'il ne tient pas dans la mémoire allouée.
 

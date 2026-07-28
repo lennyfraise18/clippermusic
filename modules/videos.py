@@ -304,6 +304,17 @@ def _score(candidate: dict) -> float:
     if candidate["source"] == "wikimedia":
         score -= 200
 
+    # Décoder de la 4K demande beaucoup de mémoire, pour un résultat qui sera
+    # de toute façon réduit en 1080x1920. Sur un conteneur limité, c'est ce
+    # décodage qui fait tuer ffmpeg : on écarte donc les très grosses sources.
+    memoire = config.memoire_disponible_mo()
+    if memoire is not None and memoire < 1500:
+        pixels = (candidate["width"] or 0) * (candidate["height"] or 0)
+        if pixels > 2_500_000:      # au-delà d'environ 1080x1920
+            score -= 50
+        if pixels > 6_000_000:      # 4K et au-delà
+            score -= 150
+
     return score
 
 
