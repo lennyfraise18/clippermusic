@@ -21,6 +21,49 @@ load_dotenv()
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = ROOT_DIR / "assets"
 
+
+def memoire_disponible_mo() -> float | None:
+    """Mémoire réellement allouée au conteneur, en mégaoctets.
+
+    Un hébergeur limite la mémoire par cgroup : `/proc/meminfo` montrerait
+    alors la RAM de la machine physique, pas ce à quoi le conteneur a droit.
+    On lit donc d'abord la limite cgroup, qui est la vraie contrainte.
+
+    Renvoie None si l'information n'est pas lisible (Windows, par exemple).
+
+    Définie ici, tout en haut, parce que plusieurs réglages en dépendent :
+    l'application adapte sa résolution et son modèle à ce qu'elle trouve.
+    """
+    chemins = (
+        "/sys/fs/cgroup/memory.max",                      # cgroup v2
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",    # cgroup v1
+    )
+    for chemin in chemins:
+        try:
+            with open(chemin) as fichier:
+                brut = fichier.read().strip()
+        except OSError:
+            continue
+        if brut == "max":
+            break
+        try:
+            octets = int(brut)
+        except ValueError:
+            continue
+        # Une limite absurdement grande signifie « pas de limite ».
+        if octets < (1 << 50):
+            return octets / (1024 * 1024)
+
+    try:
+        with open("/proc/meminfo") as fichier:
+            for ligne in fichier:
+                if ligne.startswith("MemTotal:"):
+                    return int(ligne.split()[1]) / 1024
+    except OSError:
+        pass
+    return None
+
+
 # Dossier de travail : fichiers intermédiaires (clips téléchargés, .ass, etc.).
 # Nettoyé après chaque traitement par pipeline.py.
 WORK_DIR = ROOT_DIR / "work"
@@ -47,8 +90,30 @@ JAMENDO_CLIENT_ID = os.getenv("JAMENDO_CLIENT_ID", "").strip()
 # ffmpeg a besoin. Les plateformes acceptent le 720x1280 sans broncher — elles
 # le ré-encodent de toute façon.
 #     VIDEO_WIDTH=720  VIDEO_HEIGHT=1280
-VIDEO_WIDTH = int(os.getenv("VIDEO_WIDTH", "1080"))
-VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", "1920"))
+def _resolution_par_defaut() -> tuple[int, int]:
+    """1080x1920 si la mémoire le permet, 720x1280 sinon.
+
+    Encoder du 1080x1920 demande à ffmpeg 500 à 700 Mo. En dessous d'environ
+    1,2 Go alloués au conteneur, il se fait tuer par le système — sans message
+    d'erreur, puisqu'il ne s'arrête pas de lui-même.
+
+    Plutôt que d'échouer, on descend en 720x1280 : 2,25 fois moins de pixels à
+    traiter, donc à peu près autant de mémoire en moins. TikTok, Reels et
+    Shorts acceptent ce format sans réserve — ils ré-encodent de toute façon.
+    Mieux vaut un clip un peu moins défini qu'aucun clip.
+    """
+    largeur = os.getenv("VIDEO_WIDTH")
+    hauteur = os.getenv("VIDEO_HEIGHT")
+    if largeur and hauteur:
+        return int(largeur), int(hauteur)
+
+    memoire = memoire_disponible_mo()
+    if memoire is not None and memoire < 1200:
+        return 720, 1280
+    return 1080, 1920
+
+
+VIDEO_WIDTH, VIDEO_HEIGHT = _resolution_par_defaut()
 VIDEO_FPS = int(os.getenv("VIDEO_FPS", "30"))
 
 # Au-delà de cette durée on ne traite pas la chanson entière : on sélectionne
@@ -119,45 +184,6 @@ MIN_WORDS_REQUIRED = 8
 # Sous Windows (dev local) DejaVu n'existe pas, on retombe sur Arial.
 SUBTITLE_FONT = "DejaVu Sans" if os.name != "nt" else "Arial"
 SUBTITLE_FONT_SIZE = 96
-
-
-def memoire_disponible_mo() -> float | None:
-    """Mémoire réellement allouée au conteneur, en mégaoctets.
-
-    Un hébergeur limite la mémoire par cgroup : `/proc/meminfo` montrerait
-    alors la RAM de la machine physique, pas ce à quoi le conteneur a droit.
-    On lit donc d'abord la limite cgroup, qui est la vraie contrainte.
-
-    Renvoie None si l'information n'est pas lisible (Windows, par exemple).
-    """
-    chemins = (
-        "/sys/fs/cgroup/memory.max",                      # cgroup v2
-        "/sys/fs/cgroup/memory/memory.limit_in_bytes",    # cgroup v1
-    )
-    for chemin in chemins:
-        try:
-            with open(chemin) as fichier:
-                brut = fichier.read().strip()
-        except OSError:
-            continue
-        if brut == "max":
-            break
-        try:
-            octets = int(brut)
-        except ValueError:
-            continue
-        # Une limite absurdement grande signifie « pas de limite ».
-        if octets < (1 << 50):
-            return octets / (1024 * 1024)
-
-    try:
-        with open("/proc/meminfo") as fichier:
-            for ligne in fichier:
-                if ligne.startswith("MemTotal:"):
-                    return int(ligne.split()[1]) / 1024
-    except OSError:
-        pass
-    return None
 
 
 def ensure_dirs() -> None:
