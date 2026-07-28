@@ -36,6 +36,7 @@ Les temps des segments sont TOUJOURS relatifs au début de l'extrait retenu
 (donc le premier segment commence proche de 0), ce qui simplifie le montage.
 """
 
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -143,15 +144,92 @@ def transcribe_audio(
     language: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict:
-    """Transcrit un fichier audio et renvoie l'extrait le plus dense en paroles.
+    """Transcrit un fichier audio et renvoie le moment fort de la chanson.
 
     `language` : code ISO ("fr", "en"...) ou None pour détection automatique.
     `progress` : fonction appelée avec un message d'étape, pour l'interface.
+
+    Sur un hébergement à la mémoire limitée, le travail est délégué à un
+    processus séparé : c'est le seul moyen que la mémoire du modèle soit
+    réellement rendue au système avant le montage (voir transcribe_worker).
     """
-    from faster_whisper.audio import decode_audio
+    memoire = config.memoire_disponible_mo()
+    en_sous_processus = memoire is not None and memoire < SEUIL_SOUS_PROCESSUS_MO
+
+    if en_sous_processus:
+        if progress:
+            progress("Transcription des paroles (étape la plus longue)…")
+        return _transcrire_via_sous_processus(audio_path, model_name, language)
 
     if progress:
         progress("Chargement du modèle de transcription…")
+    resultat = transcrire_directement(audio_path, model_name, language, progress)
+    return resultat
+
+
+# En dessous de cette mémoire, la transcription part dans un processus séparé.
+SEUIL_SOUS_PROCESSUS_MO = 2000
+
+
+def _transcrire_via_sous_processus(
+    audio_path: str | Path,
+    model_name: str | None,
+    language: str | None,
+) -> dict:
+    """Lance la transcription dans un processus séparé et lit son résultat."""
+    import json
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as dossier:
+        sortie = Path(dossier) / "transcription.json"
+        commande = [
+            sys.executable, "-m", "modules.transcribe_worker",
+            str(audio_path), str(sortie),
+            model_name or "", language or "",
+        ]
+        try:
+            resultat = subprocess.run(
+                commande,
+                cwd=str(config.ROOT_DIR),
+                capture_output=True,
+                timeout=1800,
+            )
+        except subprocess.TimeoutExpired:
+            raise TranscriptionError("La transcription a dépassé le temps maximum.")
+
+        # Un code négatif signifie que le processus a été TUÉ par un signal
+        # (mémoire insuffisante), pas qu'il s'est arrêté sur une erreur.
+        if resultat.returncode < 0 or resultat.returncode in (137, 143):
+            raise TranscriptionError(
+                "La transcription a été interrompue par le système, faute de "
+                "mémoire. Essaie un modèle plus léger dans les réglages "
+                "avancés (« tiny »)."
+            )
+
+        if not sortie.exists():
+            details = resultat.stderr.decode("utf-8", errors="replace").strip()
+            tail = "\n".join(details.splitlines()[-4:])
+            raise TranscriptionError(
+                f"La transcription a échoué sans produire de résultat.\n{tail}"
+            )
+
+        donnees = json.loads(sortie.read_text(encoding="utf-8"))
+
+    if "erreur" in donnees:
+        raise TranscriptionError(donnees["erreur"])
+    return donnees
+
+
+def transcrire_directement(
+    audio_path: str | Path,
+    model_name: str | None = None,
+    language: str | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict:
+    """Fait réellement la transcription, dans le processus courant."""
+    from faster_whisper.audio import decode_audio
+
     model = load_model(model_name)
 
     if progress:
