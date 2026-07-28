@@ -525,15 +525,37 @@ CSS = """
     --ambre: #fbbf24;
 }
 
+/* Aurores : trois voiles colorés qui dérivent lentement derrière toute la
+   page. Posés en `fixed` pour qu'ils restent en place quand on fait défiler,
+   comme un éclairage de salle plutôt qu'un décor collé au contenu. */
+body::before {
+    content: "";
+    position: fixed;
+    inset: -30%;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle 38vw at 18% 22%, rgba(168,85,247,0.30), transparent 60%),
+        radial-gradient(circle 32vw at 82% 12%, rgba(34,211,238,0.24), transparent 60%),
+        radial-gradient(circle 34vw at 60% 82%, rgba(236,72,153,0.22), transparent 62%);
+    filter: blur(38px);
+    animation: aurores 22s ease-in-out infinite alternate;
+}
+@keyframes aurores {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(3%, -2%) scale(1.08); }
+    100% { transform: translate(-3%, 2%) scale(1.03); }
+}
+
 .gradio-container {
+    position: relative;
+    z-index: 1;
     max-width: 620px !important;
     margin: auto !important;
     padding: 0 0.6rem !important;
-    background:
-        radial-gradient(ellipse 70% 50% at 20% 0%, rgba(168,85,247,0.16), transparent 60%),
-        radial-gradient(ellipse 60% 45% at 85% 8%, rgba(34,211,238,0.13), transparent 60%),
-        radial-gradient(ellipse at top, #16161f 0%, #08080c 65%) !important;
+    background: transparent !important;
 }
+body, gradio-app { background: #07070b !important; }
 
 /* --- Bandeau titre --- */
 #entete {
@@ -572,12 +594,18 @@ CSS = """
     font-size: 1.65rem;
     font-weight: 800;
     letter-spacing: -0.03em;
-    background-image: linear-gradient(100deg, #ffffff 0%, #a855f7 42%,
-                                      #ec4899 62%, #22d3ee 100%);
+    /* Le dégradé défile en boucle : le titre paraît vivant plutôt que peint. */
+    background-image: linear-gradient(100deg, #ffffff, #a855f7 25%, #ec4899 45%,
+                                      #22d3ee 65%, #ffffff 85%, #a855f7);
+    background-size: 250% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 2px 18px rgba(168,85,247,0.4));
+    filter: drop-shadow(0 2px 22px rgba(168,85,247,0.55));
+    animation: titre-vivant 8s linear infinite;
+}
+@keyframes titre-vivant {
+    to { background-position: -250% 50%; }
 }
 #entete p {
     text-align: center;
@@ -601,8 +629,8 @@ CSS = """
     width: 5px;
     border-radius: 3px;
     background-image: linear-gradient(180deg, #22d3ee, #a855f7 55%, #ec4899);
-    box-shadow: 0 0 12px rgba(168,85,247,0.55);
-    animation: battre 1.1s ease-in-out infinite;
+    box-shadow: 0 0 14px rgba(168,85,247,0.75), 0 0 26px rgba(236,72,153,0.35);
+    animation: battre 0.85s ease-in-out infinite;
 }
 @keyframes battre {
     0%, 100% { height: 18%; opacity: 0.65; }
@@ -663,10 +691,17 @@ CSS = """
     animation: defiler 6s ease infinite;
     box-shadow: 0 8px 28px rgba(168,85,247,0.34) !important;
     transition: transform .16s ease, box-shadow .16s ease !important;
+    animation: defiler 6s ease infinite, respirer 3s ease-in-out infinite !important;
 }
 @keyframes defiler {
     0%, 100% { background-position:   0% 50%; }
     50%      { background-position: 100% 50%; }
+}
+/* Le bouton « respire » : un halo qui enfle et retombe. Sur une page où tout
+   le reste est calme, c'est ce qui attire l'oeil vers l'action à faire. */
+@keyframes respirer {
+    0%, 100% { box-shadow: 0 8px 28px rgba(168,85,247,0.34); }
+    50%      { box-shadow: 0 10px 42px rgba(236,72,153,0.58); }
 }
 .gradio-container button#bouton-principal:hover,
 #bouton-principal:hover {
@@ -733,10 +768,28 @@ CSS = """
 #partage ul { margin: 0.4rem 0 0.6rem 1.1rem; }
 #partage li { margin: 0.18rem 0; }
 
-/* --- Blocs de contenu : un liseré coloré discret --- */
+/* --- Blocs de contenu --- */
 .gradio-container .block,
 .gradio-container .form {
     border-radius: 14px !important;
+}
+
+/* Apparition en fondu au chargement, décalée de haut en bas : la page se
+   construit sous les yeux au lieu de surgir d'un bloc. */
+#entete            { animation: surgir .55s ease both; }
+.gradio-container > .form:nth-of-type(1),
+.gradio-container > .block:nth-of-type(2) { animation: surgir .55s .08s ease both; }
+.gradio-container > .block:nth-of-type(3) { animation: surgir .55s .16s ease both; }
+@keyframes surgir {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Le champ actif s'entoure d'un halo violet : on voit où on écrit. */
+.gradio-container input:focus,
+.gradio-container textarea:focus {
+    border-color: rgba(168,85,247,0.7) !important;
+    box-shadow: 0 0 0 3px rgba(168,85,247,0.18) !important;
 }
 .gradio-container label > span { color: #cbd5e1 !important; }
 
@@ -953,22 +1006,12 @@ def construire_interface() -> gr.Blocks:
             )
             bouton_refaire = gr.Button("🔄 Refaire avec ces paroles", variant="secondary")
 
-        # Réglages et diagnostic regroupés : deux blocs repliés valaient un
-        # encombrement inutile pour des options que personne n'ouvre.
-        with gr.Accordion("⚙️ Réglages et diagnostic", open=False):
-            with gr.Row():
-                modele = gr.Dropdown(
-                    choices=["tiny", "base", "small", "medium"],
-                    value=config.WHISPER_MODEL,
-                    label="Précision de la transcription",
-                    info="Plus élevé = plus précis, mais plus lent.",
-                )
-                langue = gr.Dropdown(
-                    choices=["détection automatique", "fr", "en", "es", "de", "it"],
-                    value="détection automatique",
-                    label="Langue des paroles",
-                )
-            gr.Markdown(_diagnostic())
+        # Plus de réglages exposés : le modèle est choisi automatiquement selon
+        # la mémoire disponible, et la langue est détectée. Deux menus que
+        # personne n'ouvrait pour des décisions que l'application prend mieux.
+        # Ils restent des états, parce que le traitement en a besoin.
+        modele = gr.State(config.WHISPER_MODEL)
+        langue = gr.State("détection automatique")
 
         # Le pied de page affiche le moteur réellement chargé. Sans ça,
         # impossible de savoir depuis l'extérieur quelle version tourne — ce
