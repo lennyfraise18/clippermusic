@@ -76,10 +76,19 @@ def transcribe_audio(
     if progress:
         progress("Transcription des paroles (étape la plus longue)…")
 
+    # On ne transcrit qu'une portion : voir config.MAX_TRANSCRIBE_SECONDS.
+    decalage = _decalage_analyse(audio_path)
+
     try:
         audio = whisper_timestamped.load_audio(str(audio_path))
     except Exception as error:
         raise TranscriptionError(f"Lecture du fichier audio impossible : {error}")
+
+    if decalage > 0 or len(audio) > 16000 * config.MAX_TRANSCRIBE_SECONDS:
+        # load_audio renvoie un signal mono échantillonné à 16 kHz.
+        debut = int(decalage * 16000)
+        fin = debut + int(config.MAX_TRANSCRIBE_SECONDS * 16000)
+        audio = audio[debut:fin]
 
     try:
         raw = whisper_timestamped.transcribe(
@@ -116,8 +125,13 @@ def transcribe_audio(
         )
 
     if progress:
-        progress("Sélection du passage le plus dense en paroles…")
-    return _select_best_window(segments, raw.get("language", language or "fr"))
+        progress("Sélection du moment fort…")
+    resultat = _select_best_window(segments, raw.get("language", language or "fr"))
+
+    # Les temps calculés sont relatifs au morceau analysé. On les recale sur le
+    # fichier d'origine, sinon la bande son serait extraite au mauvais endroit.
+    resultat["start_offset"] += decalage
+    return resultat
 
 
 def appliquer_texte_corrige(segments: list[dict], texte: str) -> list[dict]:
@@ -250,6 +264,27 @@ def _drop_unreliable(segments: list[dict]) -> list[dict]:
 
         kept.append(segment)
     return kept
+
+
+def _decalage_analyse(audio_path) -> float:
+    """À quelle seconde commencer l'analyse, pour sauter l'intro.
+
+    Sur une chanson plus longue que ce qu'on analyse, démarrer un peu après le
+    début évite l'intro instrumentale — où il n'y a rien à transcrire.
+    Renvoie 0 si le morceau est assez court pour être analysé en entier.
+    """
+    from modules import audio as _audio
+
+    try:
+        duree = _audio.probe_duration(audio_path)
+    except Exception:
+        return 0.0
+
+    if duree <= config.MAX_TRANSCRIBE_SECONDS:
+        return 0.0
+
+    marge = duree - config.MAX_TRANSCRIBE_SECONDS
+    return round(min(duree * config.TRANSCRIBE_START_RATIO, marge), 2)
 
 
 def _poids_refrain(segments: list[dict]) -> dict[int, float]:

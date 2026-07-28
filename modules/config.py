@@ -55,6 +55,22 @@ VIDEO_FPS = 30
 # voir transcribe._select_best_window, qui privilégie le refrain.
 MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "15"))
 
+# Durée d'audio réellement envoyée à Whisper.
+#
+# C'est LE facteur qui détermine le temps de traitement : la transcription est
+# de loin l'étape la plus lente, et son coût est proportionnel à la durée
+# analysée. Sans cette limite, une chanson de quatre minutes est transcrite
+# en entier pour n'en garder que quinze secondes — l'essentiel du calcul part
+# donc à la poubelle.
+#
+# 120 secondes prises après l'intro couvrent en général couplet, refrain,
+# couplet, refrain : largement de quoi trouver le moment fort.
+MAX_TRANSCRIBE_SECONDS = int(os.getenv("MAX_TRANSCRIBE_SECONDS", "120"))
+
+# On ne commence pas à zéro : les premières secondes sont souvent une intro
+# instrumentale, sans parole à transcrire.
+TRANSCRIBE_START_RATIO = 0.15
+
 # Durée minimale et maximale d'un plan vidéo de fond.
 # En dessous de 1,5 s l'oeil n'a pas le temps de lire ; au-delà de 6 s c'est mou.
 MIN_SHOT_SECONDS = 1.5
