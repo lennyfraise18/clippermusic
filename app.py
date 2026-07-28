@@ -437,34 +437,72 @@ def generer(
 
 # --- Construction de l'interface ---------------------------------------------
 
-# Identité visuelle : clavier de piano. Noir profond, blanc ivoire, et des
-# notes qui montent lentement en fond. Tout est en CSS pur — aucune image, donc
-# rien à charger et rien à casser dans le conteneur du Space.
+# Identité visuelle : clavier de piano sur fond nocturne, réveillé par des
+# néons violet/magenta/cyan et un égaliseur qui bat en continu.
+#
+# Tout est en CSS pur — aucune image, aucune police externe, aucun script.
+# C'est un choix contraint autant qu'esthétique : le conteneur bloque les
+# requêtes sortantes, et une ressource qui ne charge pas casse la page.
 CSS = """
+:root {
+    --violet: #a855f7;
+    --magenta: #ec4899;
+    --cyan: #22d3ee;
+    --ambre: #fbbf24;
+}
+
 .gradio-container {
     max-width: 880px !important;
     margin: auto !important;
-    background: radial-gradient(ellipse at top, #16161a 0%, #0a0a0c 60%) !important;
+    background:
+        radial-gradient(ellipse 70% 50% at 20% 0%, rgba(168,85,247,0.16), transparent 60%),
+        radial-gradient(ellipse 60% 45% at 85% 8%, rgba(34,211,238,0.13), transparent 60%),
+        radial-gradient(ellipse at top, #16161f 0%, #08080c 65%) !important;
 }
 
 /* --- Bandeau titre --- */
 #entete {
     position: relative;
     overflow: hidden;
-    border-radius: 18px;
-    padding: 2.4rem 1rem 2rem;
-    margin-bottom: 1.4rem;
-    background: linear-gradient(160deg, #1c1c22 0%, #0d0d10 100%);
-    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 22px;
+    padding: 2.6rem 1rem 2.1rem;
+    margin-bottom: 1.5rem;
+    background: linear-gradient(160deg, #1a1a26 0%, #0b0b11 100%);
+    border: 1px solid rgba(168,85,247,0.22);
+    box-shadow: 0 0 60px rgba(168,85,247,0.10) inset,
+                0 12px 40px rgba(0,0,0,0.5);
+}
+
+/* Halo coloré qui balaie lentement le bandeau, comme un projecteur de scène. */
+#entete::before {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background: conic-gradient(from 0deg,
+        transparent 0deg, rgba(168,85,247,0.16) 60deg,
+        transparent 130deg, rgba(34,211,238,0.14) 200deg,
+        transparent 280deg, rgba(236,72,153,0.14) 330deg, transparent 360deg);
+    animation: balayage 14s linear infinite;
+    pointer-events: none;
+}
+@keyframes balayage { to { transform: rotate(360deg); } }
+
+#entete h1, #entete p, #entete .clavier, #entete .egaliseur {
+    position: relative;
+    z-index: 1;
 }
 #entete h1 {
     margin: 0;
     text-align: center;
-    font-size: 2.5rem;
+    font-size: 2.7rem;
     font-weight: 800;
-    letter-spacing: -0.02em;
-    color: #fdfdfd;
-    text-shadow: 0 2px 24px rgba(255,255,255,0.18);
+    letter-spacing: -0.03em;
+    background-image: linear-gradient(100deg, #ffffff 0%, #a855f7 42%,
+                                      #ec4899 62%, #22d3ee 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 18px rgba(168,85,247,0.4));
 }
 #entete p {
     text-align: center;
@@ -474,24 +512,54 @@ CSS = """
     line-height: 1.5;
 }
 
+/* --- Égaliseur : des barres qui battent, comme sur une platine --- */
+.egaliseur {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 5px;
+    height: 46px;
+    margin-top: 1.6rem;
+}
+.barre {
+    width: 6px;
+    border-radius: 3px;
+    background-image: linear-gradient(180deg, #22d3ee, #a855f7 55%, #ec4899);
+    box-shadow: 0 0 12px rgba(168,85,247,0.55);
+    animation: battre 1.1s ease-in-out infinite;
+}
+@keyframes battre {
+    0%, 100% { height: 18%; opacity: 0.65; }
+    50%      { height: 100%; opacity: 1; }
+}
+.barre:nth-child(1) { animation-delay: 0.0s;  }
+.barre:nth-child(2) { animation-delay: 0.18s; }
+.barre:nth-child(3) { animation-delay: 0.36s; }
+.barre:nth-child(4) { animation-delay: 0.12s; }
+.barre:nth-child(5) { animation-delay: 0.48s; }
+.barre:nth-child(6) { animation-delay: 0.26s; }
+.barre:nth-child(7) { animation-delay: 0.55s; }
+.barre:nth-child(8) { animation-delay: 0.08s; }
+.barre:nth-child(9) { animation-delay: 0.40s; }
+
 /* --- Clavier de piano sous le titre --- */
 .clavier {
     display: flex;
     justify-content: center;
     gap: 3px;
-    margin-top: 1.5rem;
-    height: 42px;
+    margin-top: 1.1rem;
+    height: 38px;
 }
 .touche {
     width: 17px;
     border-radius: 0 0 4px 4px;
-    background: linear-gradient(180deg, #ffffff 0%, #d6d6d6 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #cfcfda 100%);
     animation: enfoncer 3.4s ease-in-out infinite;
 }
 .touche.noire {
     width: 11px;
     height: 62%;
-    background: linear-gradient(180deg, #33333a 0%, #101014 100%);
+    background: linear-gradient(180deg, #2e2e3c 0%, #0e0e16 100%);
     margin: 0 -7px;
     z-index: 2;
 }
@@ -525,33 +593,70 @@ CSS = """
 .note:nth-child(4) { left: 71%; animation-delay: 1.2s; font-size: 1.9rem; }
 .note:nth-child(5) { left: 87%; animation-delay: 6s;   font-size: 1.2rem; }
 
-/* --- Bouton principal --- */
+/* --- Bouton principal ---
+   Sélecteur volontairement très spécifique : Gradio applique sa propre
+   couleur de bouton primaire avec !important, et une règle simple sur
+   #bouton-principal se fait écraser. */
+.gradio-container button#bouton-principal,
+.gradio-container #bouton-principal,
 #bouton-principal {
-    font-size: 1.15rem !important;
-    font-weight: 700 !important;
-    padding: 1rem !important;
-    border-radius: 12px !important;
-    background: linear-gradient(135deg, #ffffff 0%, #c9c9d1 100%) !important;
-    color: #0a0a0c !important;
+    font-size: 1.18rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.01em !important;
+    padding: 1.05rem !important;
+    border-radius: 14px !important;
+    color: #ffffff !important;
     border: none !important;
+    /* `background-image` et non le raccourci `background` : Gradio définit sa
+       couleur de bouton primaire, ce qui remet background-image à `none` et
+       écrase un dégradé posé via le raccourci. */
+    background-color: transparent !important;
+    background-image: linear-gradient(110deg, #a855f7, #ec4899 45%,
+                                      #f97316 75%, #a855f7) !important;
+    background-size: 260% 100% !important;
+    animation: defiler 6s ease infinite;
+    box-shadow: 0 8px 28px rgba(168,85,247,0.34) !important;
     transition: transform .16s ease, box-shadow .16s ease !important;
 }
+@keyframes defiler {
+    0%, 100% { background-position:   0% 50%; }
+    50%      { background-position: 100% 50%; }
+}
+.gradio-container button#bouton-principal:hover,
 #bouton-principal:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 30px rgba(255,255,255,0.22) !important;
+    box-shadow: 0 14px 40px rgba(236,72,153,0.48) !important;
 }
 
 /* --- Bloc de partage --- */
 #partage {
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 14px;
-    padding: 1.1rem 1.3rem;
-    background: linear-gradient(160deg, #17171c 0%, #0e0e11 100%);
+    border: 1px solid rgba(34,211,238,0.24);
+    border-radius: 16px;
+    padding: 1.2rem 1.4rem;
+    background: linear-gradient(160deg, rgba(34,211,238,0.07) 0%, #0d0d14 70%);
 }
-#partage h3 { margin-top: 0; color: #fdfdfd; }
+#partage h3 {
+    margin-top: 0;
+    background-image: linear-gradient(100deg, #22d3ee, #a855f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+#partage ul { margin: 0.4rem 0 0.6rem 1.1rem; }
+#partage li { margin: 0.18rem 0; }
 
-/* --- Zone de dépôt --- */
-.gradio-container .wrap.svelte-1ipelgc { border-radius: 14px !important; }
+/* --- Blocs de contenu : un liseré coloré discret --- */
+.gradio-container .block,
+.gradio-container .form {
+    border-radius: 14px !important;
+}
+.gradio-container label > span { color: #cbd5e1 !important; }
+
+/* La zone de dépôt est l'action principale : on la met en évidence. */
+.gradio-container .block:has(input[type="file"]) {
+    border: 1px dashed rgba(168,85,247,0.4) !important;
+    background: linear-gradient(160deg, rgba(168,85,247,0.06), transparent 70%) !important;
+}
 """
 
 # Bandeau HTML du haut : clavier animé + notes qui montent.
@@ -565,6 +670,11 @@ ENTETE_HTML = """
   <h1>&#127916; ClipperMusic</h1>
   <p>Dépose une chanson, récupère un clip vertical avec les paroles
      en karaoké. Prêt à poster.</p>
+  <div class="egaliseur">
+    <div class="barre"></div><div class="barre"></div><div class="barre"></div>
+    <div class="barre"></div><div class="barre"></div><div class="barre"></div>
+    <div class="barre"></div><div class="barre"></div><div class="barre"></div>
+  </div>
   <div class="clavier">
     <div class="touche"></div><div class="touche noire"></div>
     <div class="touche"></div><div class="touche noire"></div>
