@@ -36,6 +36,7 @@ Les temps des segments sont TOUJOURS relatifs au début de l'extrait retenu
 (donc le premier segment commence proche de 0), ce qui simplifie le montage.
 """
 
+import os
 import sys
 from pathlib import Path
 from typing import Callable
@@ -61,8 +62,14 @@ _model_cache: dict[str, object] = {}
 BESOIN_MEMOIRE_MO = {"tiny": 340, "base": 390, "small": 580, "medium": 1400}
 
 # Ce que consomme l'application pendant que la transcription travaille dans son
-# sous-processus : Gradio, spaCy et l'interpréteur principal, au repos.
-MEMOIRE_RESERVEE_MO = 300
+# sous-processus : Gradio, spaCy, l'interpréteur principal et ses tampons.
+#
+# 420 et non 300 : la mesure « à froid » donnait 250 Mo, mais en conditions
+# réelles s'ajoutent les tampons de Gradio, le fichier audio en mémoire et la
+# fragmentation de l'allocateur. Avec 300, « small » passait deux fois sur
+# trois — et la troisième tuait le conteneur, ce qui est pire qu'un modèle
+# moins précis. La marge couvre cet écart entre mesure et réalité.
+MEMOIRE_RESERVEE_MO = int(os.getenv("MEMOIRE_RESERVEE_MO", "420"))
 
 
 def decharger_modeles() -> float:
