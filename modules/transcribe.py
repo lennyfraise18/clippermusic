@@ -252,30 +252,67 @@ def _drop_unreliable(segments: list[dict]) -> list[dict]:
     return kept
 
 
-def _select_best_window(segments: list[dict], language: str) -> dict:
-    """Garde au maximum MAX_CLIP_SECONDS de la partie la plus dense en paroles.
+def _poids_refrain(segments: list[dict]) -> dict[int, float]:
+    """Donne à chaque segment un poids selon qu'il appartient au refrain.
 
-    Une chanson de 4 minutes donnerait un traitement très long et une vidéo
-    trop longue pour les réseaux sociaux. Plutôt que de couper bêtement les
-    90 premières secondes (souvent une intro instrumentale), on cherche la
-    fenêtre qui contient le plus de mots.
+    Un refrain, c'est ce qui revient. On compte donc combien de fois chaque
+    phrase apparaît dans la chanson : celles qui reviennent plusieurs fois sont
+    presque toujours le refrain, c'est-à-dire le passage que les gens
+    reconnaissent — exactement ce qu'il faut mettre dans un edit de 15 secondes.
+
+    Renvoie {indice du segment : poids}, le poids valant 1.0 pour un couplet.
+    """
+    import re
+    from collections import Counter
+
+    def normaliser(texte: str) -> str:
+        # On compare le fond, pas la ponctuation ni la casse.
+        return re.sub(r"[^\w\s]", "", texte.lower()).strip()
+
+    occurrences = Counter(normaliser(s["text"]) for s in segments)
+
+    poids = {}
+    for index, segment in enumerate(segments):
+        repetitions = occurrences[normaliser(segment["text"])]
+        # 1 occurrence = couplet (1.0), 2 = 2.5, 3 et plus = 4.0.
+        # L'écart est volontairement net : une phrase répétée trois fois doit
+        # l'emporter sur un couplet plus dense en mots.
+        poids[index] = {1: 1.0, 2: 2.5}.get(repetitions, 4.0)
+    return poids
+
+
+def _select_best_window(segments: list[dict], language: str) -> dict:
+    """Garde au maximum MAX_CLIP_SECONDS de la partie la plus forte de la chanson.
+
+    Couper les 15 premières secondes donnerait le plus souvent une intro
+    instrumentale. On cherche donc la fenêtre qui maximise un score combinant :
+      - le nombre de mots (un passage bavard vaut mieux qu'un passage vide) ;
+      - l'appartenance au refrain (voir _poids_refrain), qui pèse bien plus.
     """
     max_seconds = config.MAX_CLIP_SECONDS
 
     if segments and segments[-1]["end"] - segments[0]["start"] <= max_seconds:
         window = segments
     else:
+        poids = _poids_refrain(segments)
+
         best_window: list[dict] = []
-        best_count = -1
+        best_score = -1.0
         for index, first in enumerate(segments):
             limit = first["start"] + max_seconds
-            window = [s for s in segments[index:] if s["end"] <= limit]
-            if not window:
-                window = [first]
-            count = sum(len(s["words"]) for s in window)
-            if count > best_count:
-                best_count = count
-                best_window = window
+            fenetre_indices = [
+                i for i in range(index, len(segments))
+                if segments[i]["end"] <= limit
+            ]
+            if not fenetre_indices:
+                fenetre_indices = [index]
+
+            score = sum(
+                len(segments[i]["words"]) * poids[i] for i in fenetre_indices
+            )
+            if score > best_score:
+                best_score = score
+                best_window = [segments[i] for i in fenetre_indices]
         window = best_window
 
     # On recale tous les temps sur le début de la fenêtre retenue.

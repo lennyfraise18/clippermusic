@@ -342,9 +342,20 @@ utilise les versions transcodées que Commons génère automatiquement (1 à 3 M
 Cette source est volontairement notée très bas dans le classement des candidats :
 elle ne sert que lorsque rien d'autre n'est disponible.
 
-**Chansons longues.** Au-delà de 90 secondes, l'application ne coupe pas
-bêtement le début (souvent une intro instrumentale) : elle cherche la fenêtre de
-90 secondes **la plus dense en paroles**.
+**Le clip dure 15 secondes, et pas n'importe lesquelles.** C'est le format des
+edits qui fonctionnent sur TikTok et Reels. Mais couper les 15 premières
+secondes donnerait une intro instrumentale : l'application cherche donc le
+**moment fort** de la chanson.
+
+Comment elle le trouve : un refrain, c'est ce qui revient. On compte les
+occurrences de chaque phrase — celles qui reviennent deux ou trois fois sont
+presque toujours le refrain, c'est-à-dire le passage que les gens
+reconnaissent. La fenêtre retenue maximise un score combinant densité de mots
+et appartenance au refrain, ce dernier pesant quatre fois plus
+(`transcribe._poids_refrain`).
+
+Cette durée se règle par `MAX_CLIP_SECONDS`. Elle a un effet direct sur le temps
+de traitement : nombre de clips à télécharger et durée à encoder.
 
 **Nettoyage garanti.** Les fichiers intermédiaires sont supprimés dans un bloc
 `finally`, donc y compris quand une étape échoue. Sans ça, le disque d'un Space

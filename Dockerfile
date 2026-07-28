@@ -45,11 +45,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 RUN python -m spacy download fr_core_news_sm && \
     python -m spacy download en_core_web_sm
 
-# Le modèle Whisper pèse ~460 Mo et se télécharge au premier appel.
-# On le met dans l'image : sans ça, la toute première génération après un
-# réveil du Space attend plusieurs minutes avant même de commencer — mauvais
-# effet garanti en démo.
-RUN python -c "import whisper; whisper.load_model('small')"
+# Les modèles Whisper se téléchargent au premier appel. On les met dans
+# l'image : sans ça, la toute première génération attend plusieurs minutes
+# avant même de commencer — mauvais effet garanti en démo.
+# « base » est le modèle par défaut ; « small » et « tiny » restent
+# sélectionnables dans l'interface, autant qu'ils soient prêts aussi.
+RUN python -c "import whisper; whisper.load_model('tiny'); whisper.load_model('base'); whisper.load_model('small')"
 
 # Le VAD silero est téléchargé depuis GitHub par whisper-timestamped.
 # On tente de le mettre en cache, sans bloquer la construction si GitHub

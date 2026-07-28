@@ -44,7 +44,16 @@ VIDEO_FPS = 30
 
 # Au-delà de cette durée on ne traite pas la chanson entière : on sélectionne
 # automatiquement le passage le plus dense en paroles (voir transcribe.py).
-MAX_CLIP_SECONDS = 90
+#
+# 15 secondes, pour deux raisons qui vont dans le même sens :
+#   - c'est le format des edits qui tournent le mieux sur TikTok et Reels ;
+#   - le temps de traitement en dépend directement (nombre de plans à
+#     télécharger, durée à encoder). Sur un hébergement modeste, une minute et
+#     demie dépassait le délai au bout duquel le navigateur coupe la connexion.
+#
+# Le passage retenu n'est pas le début de la chanson mais le moment fort :
+# voir transcribe._select_best_window, qui privilégie le refrain.
+MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "15"))
 
 # Durée minimale et maximale d'un plan vidéo de fond.
 # En dessous de 1,5 s l'oeil n'a pas le temps de lire ; au-delà de 6 s c'est mou.
@@ -58,7 +67,10 @@ MAX_AUDIO_SECONDS = 60 * 12  # 12 minutes
 
 # --- Transcription ----------------------------------------------------------
 
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small").strip() or "small"
+# « base » par défaut : sur un processeur d'hébergeur mutualisé, « small » est
+# trois à quatre fois plus lent pour un gain de précision modeste sur du chant.
+# Le choix reste modifiable dans l'interface et par variable d'environnement.
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base").strip() or "base"
 
 # Whisper "hallucine" volontiers sur du silence ou de l'instrumental.
 # Tout segment dont la confiance moyenne est sous ce seuil est jeté.
