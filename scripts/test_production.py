@@ -112,11 +112,16 @@ def test_generation(client: Client) -> bool:
     ecoule = time.time() - debut
     video = r[0]
     chemin = video.get("video") if isinstance(video, dict) else video
+    message = str(r[1])
 
-    if not controle("la génération aboutit", bool(chemin), f"{ecoule:.0f} s"):
+    if not chemin:
+        # L'application a répondu proprement mais sans vidéo : le message
+        # qu'elle renvoie contient la raison, c'est lui qu'il faut lire.
+        controle("la génération aboutit", False,
+                 f"{ecoule:.0f} s — message : {message[:200]}")
         return False
 
-    message = str(r[1])
+    controle("la génération aboutit", True, f"{ecoule:.0f} s")
     controle("le message de fin est un succès", message.startswith("✅"),
              message[:60].replace("\n", " "))
     return _verifier_video(chemin)

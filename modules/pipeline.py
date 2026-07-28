@@ -31,7 +31,7 @@ def generate_clip(
     audio_path: str | Path,
     model_name: str | None = None,
     language: str | None = None,
-    approach: str = "single",
+    approach: str = "auto",
     progress: Callable[[str], None] | None = None,
     inclure_audio: bool = True,
     transcription_prete: dict | None = None,

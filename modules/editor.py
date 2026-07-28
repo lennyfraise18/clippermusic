@@ -136,6 +136,25 @@ def _run_ffmpeg(arguments: list[str], cwd: Path, timeout: int = 1800) -> None:
 
     if result.returncode != 0:
         message = result.stderr.decode("utf-8", errors="replace").strip()
+
+        # Un code négatif signifie que ffmpeg a été TUÉ par un signal, pas
+        # qu'il s'est arrêté sur une erreur. Dans ce cas stderr est vide, et
+        # afficher « ffmpeg a échoué » sans rien d'autre n'aide personne.
+        # -9 = SIGKILL, envoyé par le système quand la mémoire manque.
+        if result.returncode < 0 or (not message and result.returncode in (137, 143)):
+            raise EditError(
+                "Le montage a été interrompu par le système, faute de mémoire "
+                f"(signal {abs(result.returncode)}).\n"
+                "Réessaie avec un extrait plus court, ou avec un hébergement "
+                "disposant de plus de mémoire."
+            )
+
+        if not message:
+            raise EditError(
+                f"ffmpeg s'est arrêté sans explication (code {result.returncode}). "
+                "C'est presque toujours un manque de mémoire ou d'espace disque."
+            )
+
         # On ne renvoie que les dernières lignes : ffmpeg est très bavard.
         tail = "\n".join(message.splitlines()[-6:])
         raise EditError(f"ffmpeg a échoué :\n{tail}")
@@ -247,8 +266,14 @@ def render_two_pass(
     output_name: str,
     work_dir: Path,
     progress: Callable[[str], None] | None = None,
+    inclure_audio: bool = True,
 ) -> Path:
-    """Normalise chaque plan, concatène en copie, puis incruste les sous-titres."""
+    """Normalise chaque plan, concatène en copie, puis incruste les sous-titres.
+
+    Plus lent que le montage en une passe, mais son pic de mémoire ne dépend
+    pas du nombre de plans : c'est la seule stratégie tenable sur un conteneur
+    limité (voir choisir_approche).
+    """
     if not shots:
         raise EditError("Aucun plan à monter.")
 
@@ -271,8 +296,15 @@ def render_two_pass(
         _run_ffmpeg(arguments, cwd=work_dir)
         return output
 
-    # Les plans sont indépendants : on les normalise en parallèle.
-    workers = min(4, (os.cpu_count() or 2))
+    # Les plans sont indépendants, donc parallélisables — mais chaque ffmpeg
+    # lancé consomme sa propre mémoire. Sur un conteneur limité, paralléliser
+    # annulerait tout le bénéfice de cette approche.
+    memoire = config.memoire_disponible_mo()
+    if memoire is not None and memoire < MEMOIRE_MINIMALE_UNE_PASSE_MO:
+        workers = 1
+    else:
+        workers = min(4, (os.cpu_count() or 2))
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
         normalised = list(pool.map(normalise, enumerate(shots)))
 
@@ -291,23 +323,59 @@ def render_two_pass(
     if progress:
         progress("Incrustation des paroles…")
 
-    _run_ffmpeg(
-        [
-            "-i", "concat.mp4",
-            "-i", audio_name,
-            "-vf", f"subtitles={subtitle_name}",
-            "-map", "0:v", "-map", "1:a",
-            "-c:v", encoder,
-            *config.encoder_options(encoder),
-            "-c:a", "aac", "-b:a", "192k",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-shortest",
-            output_name,
-        ],
-        cwd=work_dir,
-    )
+    arguments = ["-i", "concat.mp4"]
+    if inclure_audio:
+        arguments += ["-i", audio_name]
+
+    arguments += [
+        "-vf", f"subtitles={subtitle_name}",
+        "-map", "0:v",
+    ]
+    if inclure_audio:
+        arguments += ["-map", "1:a", "-c:a", "aac", "-b:a", "192k"]
+    else:
+        arguments += ["-an"]
+
+    arguments += [
+        "-c:v", encoder,
+        *config.encoder_options(encoder),
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+    ]
+    if inclure_audio:
+        arguments += ["-shortest"]
+    arguments += [output_name]
+
+    _run_ffmpeg(arguments, cwd=work_dir)
     return work_dir / output_name
+
+
+# En dessous de cette mémoire, le montage en une passe ne tient pas : il ouvre
+# tous les clips simultanément dans un même filter_complex.
+MEMOIRE_MINIMALE_UNE_PASSE_MO = 1500
+
+
+def choisir_approche(nombre_de_plans: int) -> tuple[str, str | None]:
+    """Choisit la stratégie de montage selon la mémoire disponible.
+
+    Le montage en une passe est le plus rapide (mesuré : 42 % plus rapide),
+    mais il décode tous les clips en parallèle dans un seul filter_complex.
+    Sur un conteneur limité, ffmpeg se fait tuer par le système — sans message
+    d'erreur, puisqu'il ne s'arrête pas de lui-même.
+
+    Le montage en deux passes traite les clips un par un : bien plus lent,
+    mais son pic de mémoire ne dépend pas du nombre de plans.
+
+    Renvoie (approche, explication ou None).
+    """
+    disponible = config.memoire_disponible_mo()
+    if disponible is None or disponible >= MEMOIRE_MINIMALE_UNE_PASSE_MO:
+        return "single", None
+
+    return "two_pass", (
+        f"Montage clip par clip : {disponible:.0f} Mo de mémoire disponibles, "
+        f"insuffisant pour assembler {nombre_de_plans} plans en une seule passe."
+    )
 
 
 def render(
@@ -320,15 +388,20 @@ def render(
     progress: Callable[[str], None] | None = None,
     inclure_audio: bool = True,
 ) -> Path:
-    """Point d'entrée du montage. `approach` vaut "single" (B) ou "two_pass" (A)."""
+    """Point d'entrée du montage. `approach` vaut "single" (B) ou "two_pass" (A).
+
+    L'appelant peut passer "auto" pour laisser le choix se faire selon la
+    mémoire réellement disponible.
+    """
+    if approach == "auto":
+        approach, explication = choisir_approche(len(shots))
+        if explication and progress:
+            progress(explication)
+
     if approach == "two_pass":
-        if not inclure_audio:
-            raise EditError(
-                "L'export sans musique n'est disponible qu'avec le montage "
-                "en une passe."
-            )
         return render_two_pass(
-            shots, audio_name, subtitle_name, output_name, work_dir, progress
+            shots, audio_name, subtitle_name, output_name, work_dir, progress,
+            inclure_audio=inclure_audio,
         )
     return render_single_pass(
         shots, audio_name, subtitle_name, output_name, work_dir, progress,
