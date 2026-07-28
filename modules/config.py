@@ -112,6 +112,45 @@ SUBTITLE_FONT = "DejaVu Sans" if os.name != "nt" else "Arial"
 SUBTITLE_FONT_SIZE = 96
 
 
+def memoire_disponible_mo() -> float | None:
+    """Mémoire réellement allouée au conteneur, en mégaoctets.
+
+    Un hébergeur limite la mémoire par cgroup : `/proc/meminfo` montrerait
+    alors la RAM de la machine physique, pas ce à quoi le conteneur a droit.
+    On lit donc d'abord la limite cgroup, qui est la vraie contrainte.
+
+    Renvoie None si l'information n'est pas lisible (Windows, par exemple).
+    """
+    chemins = (
+        "/sys/fs/cgroup/memory.max",                      # cgroup v2
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",    # cgroup v1
+    )
+    for chemin in chemins:
+        try:
+            with open(chemin) as fichier:
+                brut = fichier.read().strip()
+        except OSError:
+            continue
+        if brut == "max":
+            break
+        try:
+            octets = int(brut)
+        except ValueError:
+            continue
+        # Une limite absurdement grande signifie « pas de limite ».
+        if octets < (1 << 50):
+            return octets / (1024 * 1024)
+
+    try:
+        with open("/proc/meminfo") as fichier:
+            for ligne in fichier:
+                if ligne.startswith("MemTotal:"):
+                    return int(ligne.split()[1]) / 1024
+    except OSError:
+        pass
+    return None
+
+
 def ensure_dirs() -> None:
     """Crée les dossiers de travail s'ils n'existent pas."""
     WORK_DIR.mkdir(parents=True, exist_ok=True)

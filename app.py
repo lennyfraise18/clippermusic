@@ -72,6 +72,61 @@ protégé.
 # --- Fonctions branchées sur l'interface ------------------------------------
 
 
+def _signature_moteur() -> str:
+    """Décrit le moteur de transcription réellement installé.
+
+    Affiché en pied de page : c'est ce qui permet de vérifier à distance quelle
+    version tourne réellement, sans accès aux logs de l'hébergeur.
+    """
+    try:
+        import faster_whisper
+
+        return (
+            f"Transcription faster-whisper {faster_whisper.__version__} "
+            f"(modèle {config.WHISPER_MODEL})"
+        )
+    except ImportError:
+        return "Transcription Whisper"
+
+
+def _diagnostic() -> str:
+    """État de l'environnement d'exécution, affiché dans l'interface.
+
+    Sert au diagnostic à distance : quand un traitement échoue sur un serveur
+    dont on ne lit pas les logs, la mémoire allouée est la première chose à
+    vérifier — c'est elle qui fait tuer le conteneur au chargement du modèle.
+    """
+    lignes = [f"- **Moteur** : {_signature_moteur()}"]
+
+    memoire = config.memoire_disponible_mo()
+    if memoire is None:
+        lignes.append("- **Mémoire allouée** : non mesurable (hors conteneur Linux)")
+    else:
+        # La transcription demande environ 400 Mo, le montage un peu plus.
+        verdict = "suffisante" if memoire >= 700 else "⚠️ probablement insuffisante"
+        lignes.append(f"- **Mémoire allouée** : {memoire:.0f} Mo — {verdict}")
+
+    lignes.append(f"- **Extrait analysé** : {config.MAX_TRANSCRIBE_SECONDS} s max")
+    lignes.append(f"- **Clip produit** : {config.MAX_CLIP_SECONDS} s max")
+
+    try:
+        encodeur = config.detect_video_encoder()
+    except Exception as erreur:
+        encodeur = f"aucun ({erreur})"
+    lignes.append(f"- **Encodeur vidéo** : {encodeur}")
+
+    cles = []
+    if config.PEXELS_API_KEY:
+        cles.append("Pexels")
+    if config.PIXABAY_API_KEY:
+        cles.append("Pixabay")
+    if config.JAMENDO_CLIENT_ID:
+        cles.append("Jamendo")
+    lignes.append(f"- **Clés configurées** : {', '.join(cles) if cles else 'aucune'}")
+
+    return "\n".join(lignes)
+
+
 def analyser_entree(lien: str):
     """Réagit à un lien collé : identifie le morceau et propose des alternatives.
 
@@ -638,6 +693,9 @@ def construire_interface() -> gr.Blocks:
             )
             bouton_refaire = gr.Button("🔄 Refaire avec ces paroles", variant="secondary")
 
+        with gr.Accordion("Diagnostic", open=False):
+            gr.Markdown(_diagnostic())
+
         with gr.Accordion("Réglages avancés", open=False):
             with gr.Row():
                 modele = gr.Dropdown(
@@ -652,9 +710,12 @@ def construire_interface() -> gr.Blocks:
                     label="Langue des paroles",
                 )
 
+        # Le pied de page affiche le moteur réellement chargé. Sans ça,
+        # impossible de savoir depuis l'extérieur quelle version tourne — ce
+        # qui rend tout diagnostic à distance impossible.
         gr.Markdown(
-            "<sub>Transcription Whisper · thèmes visuels spaCy · "
-            "visuels Pexels & Pixabay · montage ffmpeg</sub>"
+            f"<sub>{_signature_moteur()} · thèmes visuels spaCy · "
+            "visuels Pexels &amp; Pixabay · montage ffmpeg</sub>"
         )
 
         # --- Branchements ---
