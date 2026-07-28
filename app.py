@@ -709,6 +709,24 @@ body, gradio-app { background: #07070b !important; }
     box-shadow: 0 14px 40px rgba(236,72,153,0.48) !important;
 }
 
+/* --- Pied de page : le propos du projet --- */
+#positionnement {
+    margin-top: 1.6rem;
+    padding: 1.1rem 1.3rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.018);
+}
+#positionnement p { margin: 0 0 0.6rem; color: #8b93a3; font-size: 0.84rem; line-height: 1.55; }
+#positionnement p:last-child { margin-bottom: 0; }
+#positionnement p:first-child b {
+    background-image: linear-gradient(100deg, #a855f7, #22d3ee);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 0.95rem;
+}
+
 /* --- Les trois étapes, sous le bouton --- */
 .etapes {
     display: flex;
@@ -890,8 +908,9 @@ ENTETE_HTML = """
   <span class="note">&#9836;</span>
   <span class="note">&#9834;</span>
   <h1>&#127916; ClipperMusic</h1>
-  <p>Ta musique devient un edit vertical avec les paroles en karaoké.
-     <b>Prêt à poster en 20 secondes.</b></p>
+  <p><b>Enregistrer le titre n'est que la moitié du travail.</b><br>
+     Transforme un morceau en edit vertical prêt à poster — paroles
+     synchronisées, coupes calées sur le rythme, format natif des réseaux.</p>
   <div class="plateformes">
     <span class="tag tag-tiktok">TikTok</span>
     <span class="tag tag-reels">Reels</span>
@@ -903,6 +922,21 @@ ENTETE_HTML = """
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
   </div>
+</div>
+"""
+
+# Pied de page : ce que l'outil dit du métier, au-delà de sa fonction.
+POSITIONNEMENT = """
+<div id="positionnement">
+  <p><b>Pourquoi cet outil</b></p>
+  <p>Un titre bien produit qui ne circule pas n'existe pas. Aujourd'hui, la
+     découverte passe par des vidéos verticales de quinze secondes — un format
+     que peu de studios savent alimenter, alors qu'il décide de la vie d'un
+     morceau.</p>
+  <p>ClipperMusic automatise cette étape&nbsp;: reconnaissance des paroles au
+     mot près, choix des images d'après le sens du texte, montage calé sur le
+     rythme, et gestion des droits musicaux intégrée. De la prise de son à la
+     mise en ligne, sans rupture.</p>
 </div>
 """
 
@@ -1055,6 +1089,10 @@ def construire_interface() -> gr.Blocks:
         # Ils restent des états, parce que le traitement en a besoin.
         modele = gr.State(config.WHISPER_MODEL)
         langue = gr.State("détection automatique")
+
+        # Positionnement, en pied de page : la page sert aussi de démonstration
+        # de savoir-faire, pas seulement d'outil.
+        gr.HTML(POSITIONNEMENT)
 
         # Le pied de page affiche le moteur réellement chargé. Sans ça,
         # impossible de savoir depuis l'extérieur quelle version tourne — ce
