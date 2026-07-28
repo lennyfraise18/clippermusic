@@ -539,9 +539,9 @@ CSS = """
 #entete {
     position: relative;
     overflow: hidden;
-    border-radius: 18px;
-    padding: 1.7rem 0.9rem 1.4rem;
-    margin-bottom: 1rem;
+    border-radius: 16px;
+    padding: 1rem 0.8rem 0.9rem;
+    margin-bottom: 0.7rem;
     background: linear-gradient(160deg, #1a1a26 0%, #0b0b11 100%);
     border: 1px solid rgba(168,85,247,0.22);
     box-shadow: 0 0 60px rgba(168,85,247,0.10) inset,
@@ -562,14 +562,14 @@ CSS = """
 }
 @keyframes balayage { to { transform: rotate(360deg); } }
 
-#entete h1, #entete p, #entete .clavier, #entete .egaliseur {
+#entete h1, #entete p, #entete .plateformes, #entete .egaliseur {
     position: relative;
     z-index: 1;
 }
 #entete h1 {
     margin: 0;
     text-align: center;
-    font-size: 2rem;
+    font-size: 1.65rem;
     font-weight: 800;
     letter-spacing: -0.03em;
     background-image: linear-gradient(100deg, #ffffff 0%, #a855f7 42%,
@@ -582,10 +582,10 @@ CSS = """
 #entete p {
     text-align: center;
     color: #9ba1ad;
-    margin: 0.45rem auto 0;
-    max-width: 26rem;
-    font-size: 0.92rem;
-    line-height: 1.45;
+    margin: 0.3rem auto 0;
+    max-width: 24rem;
+    font-size: 0.85rem;
+    line-height: 1.35;
 }
 
 /* --- Égaliseur : des barres qui battent, comme sur une platine --- */
@@ -594,8 +594,8 @@ CSS = """
     justify-content: center;
     align-items: flex-end;
     gap: 4px;
-    height: 30px;
-    margin-top: 1rem;
+    height: 22px;
+    margin-top: 0.7rem;
 }
 .barre {
     width: 5px;
@@ -617,36 +617,6 @@ CSS = """
 .barre:nth-child(7) { animation-delay: 0.55s; }
 .barre:nth-child(8) { animation-delay: 0.08s; }
 .barre:nth-child(9) { animation-delay: 0.40s; }
-
-/* --- Clavier de piano sous le titre --- */
-.clavier {
-    display: flex;
-    justify-content: center;
-    gap: 2px;
-    margin-top: 0.7rem;
-    height: 26px;
-}
-.touche {
-    width: 13px;
-    border-radius: 0 0 4px 4px;
-    background: linear-gradient(180deg, #ffffff 0%, #cfcfda 100%);
-    animation: enfoncer 3.4s ease-in-out infinite;
-}
-.touche.noire {
-    width: 11px;
-    height: 62%;
-    background: linear-gradient(180deg, #2e2e3c 0%, #0e0e16 100%);
-    margin: 0 -7px;
-    z-index: 2;
-}
-@keyframes enfoncer {
-    0%, 88%, 100% { transform: translateY(0); opacity: 0.85; }
-    92%           { transform: translateY(4px); opacity: 1; }
-}
-.touche:nth-child(2n)  { animation-delay: 0.4s; }
-.touche:nth-child(3n)  { animation-delay: 0.9s; }
-.touche:nth-child(5n)  { animation-delay: 1.6s; }
-.touche:nth-child(7n)  { animation-delay: 2.3s; }
 
 /* --- Notes qui montent en fond --- */
 .note {
@@ -711,8 +681,8 @@ CSS = """
     display: flex;
     justify-content: center;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 1.1rem;
+    gap: 6px;
+    margin-top: 0.7rem;
 }
 .tag {
     font-size: 0.78rem;
@@ -770,10 +740,19 @@ CSS = """
 }
 .gradio-container label > span { color: #cbd5e1 !important; }
 
-/* La zone de dépôt est l'action principale : on la met en évidence. */
+/* La zone de dépôt est l'action principale : on la met en évidence.
+   Sa hauteur est bornée, sinon Gradio lui réserve près de 250 px — de quoi
+   repousser le champ « lien » et le bouton hors de l'écran d'un téléphone. */
 .gradio-container .block:has(input[type="file"]) {
     border: 1px dashed rgba(168,85,247,0.4) !important;
     background: linear-gradient(160deg, rgba(168,85,247,0.06), transparent 70%) !important;
+}
+.gradio-container .block:has(input[type="file"]) .wrap {
+    min-height: 96px !important;
+    padding: 0.5rem !important;
+}
+.gradio-container .block:has(input[type="file"]) .wrap > * {
+    font-size: 0.88rem !important;
 }
 
 /* Le lecteur ne doit pas manger tout l'écran d'un téléphone. */
@@ -796,11 +775,8 @@ CSS = """
     #entete h1 { font-size: 1.55rem; }
     #entete p  { font-size: 0.85rem; }
 
-    .egaliseur { height: 22px; gap: 3px; margin-top: 0.8rem; }
+    .egaliseur { height: 18px; gap: 3px; margin-top: 0.6rem; }
     .barre     { width: 4px; }
-    .clavier   { height: 20px; margin-top: 0.5rem; }
-    .touche    { width: 10px; }
-    .touche.noire { width: 7px; margin: 0 -4px; }
 
     .tag { font-size: 0.68rem; padding: 4px 10px; }
     .plateformes { gap: 6px; margin-top: 0.8rem; }
@@ -818,9 +794,6 @@ CSS = """
     /* Les réglages passent l'un sous l'autre au lieu de se serrer. */
     .gradio-container .form > .block { min-width: 100% !important; }
 
-    /* Le clavier disparaît : l'égaliseur suffit comme signature musicale,
-       et ces 30 pixels comptent quand l'écran fait 812 px de haut. */
-    .clavier { display: none; }
 }
 """
 
@@ -845,18 +818,6 @@ ENTETE_HTML = """
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
-  </div>
-  <div class="clavier">
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div>
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div>
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div><div class="touche noire"></div>
-    <div class="touche"></div>
   </div>
 </div>
 """
