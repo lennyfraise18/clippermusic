@@ -92,6 +92,104 @@ def detecter_temps_forts(audio: np.ndarray, decalage: float = 0.0) -> list[float
     return temps_forts
 
 
+def analyser_ambiance(audio: np.ndarray, temps_forts: list[float]) -> dict:
+    """Décrit le caractère d'un morceau à partir du son lui-même.
+
+    Sans paroles, il n'y a aucun mot pour deviner de quoi parle la musique.
+    Mais le signal, lui, dit beaucoup. Trois mesures suffisent à distinguer
+    un beat de trap d'une nappe mélancolique :
+
+    - **le tempo**, déduit de l'espacement des temps forts. Rapide appelle du
+      mouvement, lent appelle de la contemplation.
+
+    - **la brillance** (centroïde spectral) : où se situe le centre de gravité
+      des fréquences. Des aigus dominants sonnent clair et ouvert ; des graves
+      dominants sonnent lourd et nocturne. C'est la mesure qui sépare le mieux
+      une guitare acoustique d'une 808.
+
+    - **l'intensité**, l'énergie moyenne du signal.
+
+    Renvoie un dictionnaire lisible, dont la clé « ambiance » sert à choisir
+    les images.
+    """
+    if audio is None or len(audio) < FREQUENCE:
+        return {"ambiance": "calme_lumineux", "tempo": 0, "brillance": 0, "intensite": 0}
+
+    duree = len(audio) / FREQUENCE
+
+    # --- Tempo, d'après l'écart médian entre deux temps forts ---
+    tempo = 0.0
+    if len(temps_forts) > 2:
+        ecarts = np.diff(np.array(temps_forts))
+        ecarts = ecarts[(ecarts > 0.15) & (ecarts < 2.0)]
+        if len(ecarts):
+            tempo = 60.0 / float(np.median(ecarts))
+    if not tempo and duree:
+        tempo = len(temps_forts) / duree * 60
+
+    # --- Contraste : la pulsation est-elle marquée, ou est-ce du bourdonnement ? ---
+    #
+    # Une nappe grave et continue produit des variations d'énergie régulières
+    # que la détection prend pour des temps forts — et un morceau contemplatif
+    # se retrouve classé « rapide ». Un vrai beat, lui, alterne franchement
+    # frappes et silences.
+    #
+    # On mesure donc l'écart-type de l'énergie rapporté à sa moyenne : élevé
+    # quand la musique frappe, faible quand elle bourdonne.
+    nombre = len(audio) // TAILLE_FENETRE
+    fenetres = audio[: nombre * TAILLE_FENETRE].reshape(nombre, TAILLE_FENETRE)
+    energie = np.sqrt(np.mean(fenetres.astype(np.float32) ** 2, axis=1))
+    moyenne = float(energie.mean())
+    contraste = float(energie.std() / moyenne) if moyenne > 0 else 0.0
+
+    # Sans contraste, la notion de tempo n'a pas de sens : on considère le
+    # morceau comme lent, ce qu'il est à l'oreille.
+    if contraste < 0.35:
+        tempo = min(tempo, 80.0)
+
+    # Erreur d'octave, classique en détection de tempo : on compte les
+    # doubles-croches au lieu des temps. Au-delà de 190 BPM, la musique
+    # populaire n'existe quasiment plus — c'est qu'on a compté deux fois trop
+    # vite. On redescend d'une octave, autant de fois que nécessaire.
+    while tempo > 190:
+        tempo /= 2
+
+    # --- Brillance : centre de gravité du spectre ---
+    # On analyse un extrait au milieu du morceau : le début est souvent une
+    # intro peu représentative.
+    milieu = len(audio) // 2
+    tranche = audio[max(0, milieu - FREQUENCE) : milieu + FREQUENCE]
+    spectre = np.abs(np.fft.rfft(tranche * np.hanning(len(tranche))))
+    frequences = np.fft.rfftfreq(len(tranche), 1 / FREQUENCE)
+    total = spectre.sum()
+    brillance = float((spectre * frequences).sum() / total) if total else 0.0
+
+    intensite = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
+
+    # --- Classement ---
+    # 100 BPM sépare ce qui donne envie de bouger de ce qui invite à écouter.
+    # 1200 Hz sépare un mix dominé par les graves d'un mix ouvert sur les aigus.
+    rapide = tempo >= 100
+    clair = brillance >= 1200
+
+    if rapide and clair:
+        ambiance = "intense_lumineux"
+    elif rapide:
+        ambiance = "intense_sombre"
+    elif clair:
+        ambiance = "calme_lumineux"
+    else:
+        ambiance = "calme_sombre"
+
+    return {
+        "ambiance": ambiance,
+        "tempo": round(tempo),
+        "brillance": round(brillance),
+        "intensite": round(intensite, 4),
+        "contraste": round(contraste, 2),
+    }
+
+
 def caler_sur_temps_forts(
     plans: list[dict], temps_forts: list[float], tolerance: float = 0.35
 ) -> list[dict]:

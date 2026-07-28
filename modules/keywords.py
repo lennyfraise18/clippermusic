@@ -286,72 +286,88 @@ FALLBACK_QUERIES = [
 #
 # Les familles sont mélangées à la génération pour qu'un clip alterne les
 # registres au lieu d'enchaîner cinq plans de voiture.
+# Chaque ambiance sonore appelle son registre d'images. Le rapprochement n'est
+# pas décoratif : un beat rapide et sourd ne raconte pas la même chose qu'une
+# nappe lente et cristalline, et les mettre sur les mêmes plans se voit
+# immédiatement.
 AMBIANCES_INSTRUMENTALES = {
-    "hauteur": [
-        "aerial drone mountain sunrise",
-        "cliff edge ocean aerial",
-        "skyscraper rooftop city aerial",
-        "airplane wing above clouds",
-        "hot air balloon sunrise valley",
+    # Rapide et brillant — dance, pop, électro, house.
+    # Mouvement, foule, lumière franche.
+    "intense_lumineux": [
+        "crowd dancing concert lights",
+        "city street time lapse day",
+        "convertible driving coast sunset",
+        "confetti falling slow motion",
+        "runner sprinting stadium",
+        "aerial drone city sunrise",
+        "festival lights crowd hands",
+        "skateboard riding city day",
     ],
-    "vitesse": [
+    # Rapide et sourd — trap, drill, rock lourd, techno sombre.
+    # Nuit, vitesse, béton, contrastes durs.
+    "intense_sombre": [
         "car driving highway night lights",
-        "motorcycle riding city night",
-        "train window landscape motion",
-        "speedboat ocean wake aerial",
-        "running through city night",
-    ],
-    "lumiere": [
-        "neon signs rain reflection night",
-        "golden hour sun flare field",
-        "city lights bokeh out of focus",
-        "light rays through fog forest",
-        "sunset silhouette horizon",
-    ],
-    "matiere": [
-        "ink drop water slow motion",
-        "smoke swirling dark background",
+        "motorcycle riding city night rain",
+        "neon signs alley night",
         "sparks flying slow motion dark",
+        "underground parking garage lights",
+        "silhouette running night street",
+        "smoke swirling dark red light",
+        "subway train tunnel motion",
+    ],
+    # Lent et brillant — acoustique, lo-fi, ambient clair, piano.
+    # Nature, lumière douce, matières délicates.
+    "calme_lumineux": [
+        "golden hour sun flare field",
+        "aerial drone mountain sunrise",
+        "light rays through forest fog",
         "water surface ripple macro",
-        "fabric flowing slow motion",
+        "clouds time lapse blue sky",
+        "wheat field wind slow motion",
+        "coffee steam morning window",
+        "waves washing beach sunrise",
     ],
-    "solitude": [
+    # Lent et sourd — cinématique, mélancolique, drone, ambient sombre.
+    # Solitude, brume, vide, nuit calme.
+    "calme_sombre": [
         "person walking empty street night",
-        "silhouette window city view",
-        "lone figure desert road",
-        "empty swimming pool night",
-        "person on rooftop city skyline",
-    ],
-    "luxe": [
-        "modern architecture minimal interior",
-        "marble texture luxury detail",
-        "yacht deck ocean sunset",
-        "vintage car close up detail",
-        "champagne pouring slow motion",
+        "fog rolling over dark forest",
+        "rain on window night city",
+        "lone figure desert road dusk",
+        "empty room window dim light",
+        "ink drop water slow motion dark",
+        "abandoned building fog",
+        "ocean waves night moonlight",
     ],
 }
 
+# Utilisé si l'analyse ne donne rien d'exploitable.
+AMBIANCE_PAR_DEFAUT = "calme_sombre"
 
-def requetes_instrumentales(nombre: int) -> list[str]:
+
+def requetes_instrumentales(nombre: int, ambiance: str | None = None) -> list[str]:
     """Construit une suite de requêtes visuelles pour un morceau sans paroles.
 
-    On alterne volontairement les familles : cinq plans de voiture à la suite
-    ressemblent à une publicité automobile, alors qu'un clip a besoin de
-    respirer entre les registres.
+    Les images viennent du registre correspondant à l'ambiance sonore détectée
+    (voir rythme.analyser_ambiance). À l'intérieur d'un registre, on parcourt
+    la liste sans se répéter : les plans se ressemblent par le ton, pas par
+    le sujet.
     """
     import random
 
-    familles = list(AMBIANCES_INSTRUMENTALES)
-    random.shuffle(familles)
+    registre = AMBIANCES_INSTRUMENTALES.get(
+        ambiance or AMBIANCE_PAR_DEFAUT,
+        AMBIANCES_INSTRUMENTALES[AMBIANCE_PAR_DEFAUT],
+    )
+
+    # Ordre tiré au sort pour que deux clips du même morceau ne soient pas
+    # identiques, mais toujours dans le même registre.
+    choix = list(registre)
+    random.shuffle(choix)
 
     requetes: list[str] = []
-    tour = 0
     while len(requetes) < nombre:
-        famille = familles[tour % len(familles)]
-        choix = AMBIANCES_INSTRUMENTALES[famille]
-        requetes.append(choix[(tour // len(familles)) % len(choix)])
-        tour += 1
-
+        requetes.extend(choix)
     return requetes[:nombre]
 
 # Mots trop fréquents ou trop creux pour donner une image, en plus des

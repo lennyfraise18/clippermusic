@@ -94,7 +94,11 @@ def generate_clip(
 
         # --- 3. Mots-clés visuels -------------------------------------------
         if instrumental:
-            step("Morceau instrumental : montage d'ambiance…")
+            profil = result.get("profil") or {}
+            step(
+                f"Morceau instrumental ({profil.get('tempo', 0)} BPM) : "
+                f"images choisies selon son ambiance…"
+            )
             segments = []
             shots = _plans_instrumentaux(result)
         else:
@@ -301,7 +305,8 @@ def _plans_instrumentaux(result: dict) -> list[dict]:
 
     frontieres.append(duree)
 
-    requetes = keywords.requetes_instrumentales(len(frontieres) - 1)
+    ambiance = (result.get("profil") or {}).get("ambiance")
+    requetes = keywords.requetes_instrumentales(len(frontieres) - 1, ambiance)
     return [
         {
             "start": frontieres[i],

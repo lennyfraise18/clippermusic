@@ -523,6 +523,11 @@ def _extrait_instrumental(audio, decalage: float, langue: str) -> dict:
         if debut_relatif <= t < fin_relative
     ]
 
+    # Caractère du morceau, mesuré sur l'extrait retenu : c'est lui qui
+    # décidera du registre d'images.
+    extrait = audio[int(debut_relatif * 16000) : int(fin_relative * 16000)]
+    profil = rythme.analyser_ambiance(extrait, temps_forts)
+
     return {
         "language": langue,
         "start_offset": decalage + debut_relatif,
@@ -533,6 +538,7 @@ def _extrait_instrumental(audio, decalage: float, langue: str) -> dict:
         "passages_disponibles": 1,
         "passage_retenu": 0,
         "temps_forts": temps_forts,
+        "profil": profil,
     }
 
 
