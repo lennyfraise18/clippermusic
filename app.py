@@ -113,7 +113,10 @@ def _diagnostic() -> str:
         lignes.append(f"- **Modèle réellement utilisé** : {retenu}")
 
     lignes.append(f"- **Extrait analysé** : {config.MAX_TRANSCRIBE_SECONDS} s max")
-    lignes.append(f"- **Clip produit** : {config.MAX_CLIP_SECONDS} s max")
+    lignes.append(
+        f"- **Clip produit** : {config.MAX_CLIP_SECONDS} s max, "
+        f"{config.VIDEO_WIDTH}×{config.VIDEO_HEIGHT}"
+    )
 
     try:
         encodeur = config.detect_video_encoder()

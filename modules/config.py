@@ -38,9 +38,18 @@ JAMENDO_CLIENT_ID = os.getenv("JAMENDO_CLIENT_ID", "").strip()
 
 # --- Paramètres vidéo -------------------------------------------------------
 
-VIDEO_WIDTH = 1080
-VIDEO_HEIGHT = 1920
-VIDEO_FPS = 30
+# Résolution de sortie. 1080x1920 est le format natif de TikTok, Reels et
+# Shorts, et reste le bon choix par défaut.
+#
+# Elle se règle par variable d'environnement parce que c'est le premier levier
+# quand l'hébergement manque de mémoire : encoder en 720x1280 divise par 2,25
+# le nombre de pixels à traiter, donc à peu près d'autant la mémoire dont
+# ffmpeg a besoin. Les plateformes acceptent le 720x1280 sans broncher — elles
+# le ré-encodent de toute façon.
+#     VIDEO_WIDTH=720  VIDEO_HEIGHT=1280
+VIDEO_WIDTH = int(os.getenv("VIDEO_WIDTH", "1080"))
+VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", "1920"))
+VIDEO_FPS = int(os.getenv("VIDEO_FPS", "30"))
 
 # Au-delà de cette durée on ne traite pas la chanson entière : on sélectionne
 # automatiquement le passage le plus dense en paroles (voir transcribe.py).
