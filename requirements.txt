@@ -2,16 +2,13 @@
 gradio>=5.9,<6
 
 # --- Transcription alignée mot par mot ---
-# whisper-timestamped fournit les timestamps par MOT, indispensables pour le karaoké.
-# (openai-whisper seul ne donne que des timestamps par phrase.)
-# torch : sur Windows le wheel PyPI est déjà CPU-only.
-# Dans le Dockerfile (Linux) on force l'index CPU, sinon l'image fait ~5 Go.
-torch>=2.4,<2.6
-whisper-timestamped>=1.15
-
-# Accélère le détecteur de voix (silero VAD) sur processeur. Sans lui, le VAD
-# tourne sous torch et whisper-timestamped affiche un avertissement à chaque appel.
-onnxruntime>=1.19
+# faster-whisper plutôt que whisper-timestamped : même qualité, timestamps par
+# mot inclus, mais sans PyTorch. Mesuré sur 154 s d'audio :
+#     whisper-timestamped (PyTorch) : ~1900 Mo de RAM, ~70 s
+#     faster-whisper (CTranslate2)  :  ~390 Mo de RAM,  ~9 s
+# PyTorch réservait à lui seul plus d'un gigaoctet, ce qui faisait tuer le
+# conteneur sur un hébergement limité en mémoire.
+faster-whisper>=1.1
 
 # --- Extraction de mots-clés ---
 spacy>=3.8,<3.9

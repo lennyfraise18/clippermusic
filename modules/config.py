@@ -88,6 +88,11 @@ MAX_AUDIO_SECONDS = 60 * 12  # 12 minutes
 # Le choix reste modifiable dans l'interface et par variable d'environnement.
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base").strip() or "base"
 
+# Nombre de cœurs utilisés par la transcription.
+# 0 laisse la bibliothèque décider. Sur un hébergement mutualisé, la limiter
+# évite qu'elle réserve de la mémoire pour des cœurs qu'elle n'aura jamais.
+CPU_THREADS = int(os.getenv("CPU_THREADS", "2"))
+
 # Whisper "hallucine" volontiers sur du silence ou de l'instrumental.
 # Tout segment dont la confiance moyenne est sous ce seuil est jeté.
 MIN_SEGMENT_CONFIDENCE = 0.35

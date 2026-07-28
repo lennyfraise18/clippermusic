@@ -1,8 +1,20 @@
 """Transcription des paroles avec timestamps mot par mot.
 
-On utilise whisper-timestamped et pas openai-whisper seul : le karaoké a besoin
-de savoir quand chaque MOT commence et finit, ce que Whisper de base ne donne pas
-de façon fiable.
+On utilise **faster-whisper**, et pas openai-whisper ni whisper-timestamped.
+
+Pourquoi ce choix, mesuré sur le fichier de test (154 s d'audio) :
+
+    whisper-timestamped (PyTorch)   ~1 900 Mo de RAM,  ~70 s
+    faster-whisper (CTranslate2)      ~390 Mo de RAM,   ~9 s
+
+Le facteur limitant n'était pas le modèle mais **PyTorch** : à lui seul il
+réserve plus d'un gigaoctet. faster-whisper s'appuie sur CTranslate2, écrit en
+C++, qui n'a besoin ni de PyTorch ni de CUDA. Le projet a donc perdu sa plus
+grosse dépendance, ce qui a débloqué l'hébergement : sur un conteneur limité en
+mémoire, la version PyTorch se faisait tuer au chargement du modèle.
+
+Les timestamps par mot, indispensables au karaoké, sont fournis nativement via
+`word_timestamps=True`.
 
 Ce module renvoie une structure simple, réutilisée par tout le reste du pipeline :
 
@@ -40,16 +52,24 @@ _model_cache: dict[str, object] = {}
 
 
 def load_model(model_name: str | None = None):
-    """Charge (et met en cache) un modèle Whisper."""
-    import whisper_timestamped
+    """Charge (et met en cache) un modèle faster-whisper."""
+    from faster_whisper import WhisperModel
 
     name = model_name or config.WHISPER_MODEL
     if name not in _model_cache:
         try:
-            _model_cache[name] = whisper_timestamped.load_model(name, device="cpu")
+            _model_cache[name] = WhisperModel(
+                name,
+                device="cpu",
+                # int8 : quantification 8 bits. Divise par deux la mémoire et
+                # accélère nettement, pour une perte de précision imperceptible
+                # sur du chant.
+                compute_type="int8",
+                cpu_threads=config.CPU_THREADS,
+            )
         except Exception as error:
             raise TranscriptionError(
-                f"Impossible de charger le modèle Whisper « {name} » : {error}\n"
+                f"Impossible de charger le modèle « {name} » : {error}\n"
                 "Au premier lancement le modèle est téléchargé, cela peut prendre "
                 "quelques minutes et demande une connexion internet."
             )
@@ -67,7 +87,7 @@ def transcribe_audio(
     `language` : code ISO ("fr", "en"...) ou None pour détection automatique.
     `progress` : fonction appelée avec un message d'étape, pour l'interface.
     """
-    import whisper_timestamped
+    from faster_whisper.audio import decode_audio
 
     if progress:
         progress("Chargement du modèle de transcription…")
@@ -80,40 +100,39 @@ def transcribe_audio(
     decalage = _decalage_analyse(audio_path)
 
     try:
-        audio = whisper_timestamped.load_audio(str(audio_path))
+        audio = decode_audio(str(audio_path), sampling_rate=16000)
     except Exception as error:
         raise TranscriptionError(f"Lecture du fichier audio impossible : {error}")
 
     if decalage > 0 or len(audio) > 16000 * config.MAX_TRANSCRIBE_SECONDS:
-        # load_audio renvoie un signal mono échantillonné à 16 kHz.
         debut = int(decalage * 16000)
         fin = debut + int(config.MAX_TRANSCRIBE_SECONDS * 16000)
         audio = audio[debut:fin]
 
     try:
-        raw = whisper_timestamped.transcribe(
-            model,
+        segments_bruts, info = model.transcribe(
             audio,
             language=language,
-            # vad coupe les longs silences : c'est la principale protection
-            # contre les hallucinations de Whisper sur les passages instrumentaux.
-            vad=True,
-            # Sur une chanson, la "température de repli" fait souvent inventer
-            # du texte. On reste déterministe.
+            word_timestamps=True,
+            # Sur une chanson, la « température de repli » fait inventer du
+            # texte. On reste déterministe.
             temperature=0.0,
-            verbose=None,
+            # Pas de VAD : sur des enregistrements bruités ou anciens, il
+            # supprime la totalité des paroles (constaté sur le fichier de
+            # test de 1911, où il ne restait aucun segment). Les hallucinations
+            # sont écartées ensuite par _drop_unreliable.
+            vad_filter=False,
+            condition_on_previous_text=False,
         )
+        # model.transcribe renvoie un générateur : rien n'est calculé tant
+        # qu'on ne le parcourt pas.
+        segments_bruts = list(segments_bruts)
     except Exception as error:
-        # vad=True télécharge le modèle silero au premier appel : sans réseau,
-        # ça échoue. On réessaie une fois sans VAD plutôt que de tout arrêter.
-        try:
-            raw = whisper_timestamped.transcribe(
-                model, audio, language=language, temperature=0.0, verbose=None
-            )
-        except Exception:
-            raise TranscriptionError(f"La transcription a échoué : {error}")
+        raise TranscriptionError(f"La transcription a échoué : {error}")
 
-    segments = _normalise_segments(raw.get("segments", []))
+    langue_detectee = info.language or language or "fr"
+
+    segments = _normalise_segments(segments_bruts)
     segments = _drop_unreliable(segments)
 
     total_words = sum(len(segment["words"]) for segment in segments)
@@ -126,7 +145,7 @@ def transcribe_audio(
 
     if progress:
         progress("Sélection du moment fort…")
-    resultat = _select_best_window(segments, raw.get("language", language or "fr"))
+    resultat = _select_best_window(segments, langue_detectee)
 
     # Les temps calculés sont relatifs au morceau analysé. On les recale sur le
     # fichier d'origine, sinon la bande son serait extraite au mauvais endroit.
@@ -205,15 +224,20 @@ def appliquer_texte_corrige(segments: list[dict], texte: str) -> list[dict]:
     return corriges
 
 
-def _normalise_segments(raw_segments: list[dict]) -> list[dict]:
-    """Convertit la sortie de whisper-timestamped en structure simple et propre."""
+def _normalise_segments(raw_segments) -> list[dict]:
+    """Convertit la sortie de faster-whisper en structure simple et propre.
+
+    faster-whisper renvoie des objets (Segment, Word) et non des dictionnaires.
+    On les aplatit ici pour que le reste du pipeline n'ait pas à connaître la
+    bibliothèque utilisée — c'est ce qui a permis de changer de moteur de
+    transcription sans toucher aux autres modules.
+    """
     segments = []
     for raw in raw_segments:
         words = []
-        for raw_word in raw.get("words", []):
-            text = (raw_word.get("text") or "").strip()
-            start = raw_word.get("start")
-            end = raw_word.get("end")
+        for raw_word in (getattr(raw, "words", None) or []):
+            text = (raw_word.word or "").strip()
+            start, end = raw_word.start, raw_word.end
             if not text or start is None or end is None or end <= start:
                 continue
             words.append(
@@ -221,19 +245,25 @@ def _normalise_segments(raw_segments: list[dict]) -> list[dict]:
                     "text": text,
                     "start": float(start),
                     "end": float(end),
-                    "confidence": float(raw_word.get("confidence") or 0.0),
+                    # faster-whisper donne une probabilité par mot ; c'est
+                    # l'équivalent direct de l'ancienne « confidence ».
+                    "confidence": float(raw_word.probability or 0.0),
                 }
             )
 
         if not words:
             continue
 
+        # Pas de confiance fournie au niveau du segment : on prend la moyenne
+        # de ses mots, ce qui donne la même échelle qu'avant (0 à 1).
+        confiance = sum(w["confidence"] for w in words) / len(words)
+
         segments.append(
             {
                 "text": " ".join(word["text"] for word in words),
                 "start": words[0]["start"],
                 "end": words[-1]["end"],
-                "confidence": float(raw.get("confidence") or 0.0),
+                "confidence": confiance,
                 "words": words,
             }
         )
