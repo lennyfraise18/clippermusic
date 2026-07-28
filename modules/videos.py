@@ -120,19 +120,33 @@ def search_pexels(query: str, per_page: int = 15) -> list[dict]:
 def _pick_pexels_file(video_files: list[dict]) -> dict | None:
     """Choisit le fichier au bon compromis qualité / poids.
 
-    On vise une hauteur proche de 1920 : en dessous l'image sera étirée,
-    au-dessus (4K) on télécharge 200 Mo pour rien.
+    On vise la hauteur de SORTIE, pas une valeur fixe : télécharger du
+    1080x1920 pour produire du 720x1280 fait décoder deux fois plus de pixels
+    que nécessaire — et c'est ce décodage qui fait manquer de mémoire au
+    montage. On accepte un peu au-dessus de la cible (le recadrage a besoin
+    de marge), jamais beaucoup plus.
     """
+    cible = config.VIDEO_HEIGHT
+    minimum = int(cible * 0.55)
+
     usable = [
         file
         for file in video_files
         if file.get("link")
         and file.get("file_type") == "video/mp4"
-        and (file.get("height") or 0) >= 720
+        and (file.get("height") or 0) >= minimum
     ]
     if not usable:
         return None
-    return min(usable, key=lambda file: abs((file.get("height") or 0) - 1920))
+
+    # Le plus proche de la cible, en pénalisant ce qui la dépasse : une source
+    # trop grande coûte cher à décoder pour un résultat identique après
+    # réduction.
+    def ecart(file: dict) -> float:
+        hauteur = file.get("height") or 0
+        return (hauteur - cible) * (2.0 if hauteur > cible else 1.0)
+
+    return min(usable, key=lambda file: abs(ecart(file)))
 
 
 def search_pixabay(query: str, per_page: int = 20) -> list[dict]:
@@ -167,9 +181,22 @@ def search_pixabay(query: str, per_page: int = 20) -> list[dict]:
     candidates = []
     for hit in payload.get("hits", []):
         files = hit.get("videos", {})
-        best_file = files.get("large") or files.get("medium") or files.get("small")
-        if not best_file or not best_file.get("url"):
+        # Même logique que pour Pexels : on prend la déclinaison la plus proche
+        # de la hauteur de sortie, pas systématiquement la plus grande.
+        declinaisons = [
+            files.get(nom) for nom in ("large", "medium", "small", "tiny")
+            if files.get(nom) and files[nom].get("url")
+        ]
+        if not declinaisons:
             continue
+
+        cible = config.VIDEO_HEIGHT
+        utilisables = [d for d in declinaisons if (d.get("height") or 0) >= cible * 0.55]
+        best_file = min(
+            utilisables or declinaisons,
+            key=lambda d: abs(((d.get("height") or 0) - cible)
+                              * (2.0 if (d.get("height") or 0) > cible else 1.0)),
+        )
         candidates.append(
             {
                 "source": "pixabay",
@@ -304,16 +331,19 @@ def _score(candidate: dict) -> float:
     if candidate["source"] == "wikimedia":
         score -= 200
 
-    # Décoder de la 4K demande beaucoup de mémoire, pour un résultat qui sera
-    # de toute façon réduit en 1080x1920. Sur un conteneur limité, c'est ce
-    # décodage qui fait tuer ffmpeg : on écarte donc les très grosses sources.
+    # Décoder une source bien plus grande que la sortie coûte de la mémoire
+    # pour rien : le résultat sera réduit de toute façon. Sur un conteneur
+    # limité, c'est ce décodage qui fait tuer ffmpeg — la pénalité est donc
+    # forte, au point de faire passer un clip modeste devant un clip parfait
+    # mais trop lourd.
     memoire = config.memoire_disponible_mo()
     if memoire is not None and memoire < 1500:
         pixels = (candidate["width"] or 0) * (candidate["height"] or 0)
-        if pixels > 2_500_000:      # au-delà d'environ 1080x1920
-            score -= 50
-        if pixels > 6_000_000:      # 4K et au-delà
-            score -= 150
+        pixels_cible = config.VIDEO_WIDTH * config.VIDEO_HEIGHT
+        if pixels > pixels_cible * 2:
+            score -= 120
+        if pixels > pixels_cible * 4:
+            score -= 400      # au-delà, mieux vaut chercher ailleurs
 
     return score
 
