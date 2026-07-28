@@ -36,19 +36,50 @@ class EditError(Exception):
 # Filtre appliqué à chaque plan : on agrandit jusqu'à couvrir le cadre vertical,
 # puis on recadre au centre. force_original_aspect_ratio=increase garantit qu'il
 # n'y a jamais de bandes noires.
-def _scale_crop(largeur: int | None = None, hauteur: int | None = None) -> str:
+def _scale_crop(
+    largeur: int | None = None,
+    hauteur: int | None = None,
+    index: int = 0,
+    duree: float = 0.0,
+) -> str:
     """Filtre de mise au format, à la résolution demandée.
 
     Calculé à la demande et non figé une fois pour toutes : en cas de manque
     de mémoire, le montage est relancé à une résolution plus basse.
+
+    Quand le zoom est actif, un mouvement de caméra lent est ajouté — zoom
+    avant sur les plans pairs, arrière sur les impairs. Alterner évite l'effet
+    « tout respire en même temps » qu'on obtient avec un zoom toujours
+    identique, et donne l'impression d'un montage fait à la main.
+
+    Le zoom est obtenu en agrandissant l'image puis en recadrant sur une zone
+    qui varie avec le temps. C'est bien moins coûteux que le filtre `zoompan`,
+    qui recalcule l'image entière à chaque trame.
     """
     largeur = largeur or config.VIDEO_WIDTH
     hauteur = hauteur or config.VIDEO_HEIGHT
-    return (
+
+    base = (
         f"scale={largeur}:{hauteur}:force_original_aspect_ratio=increase,"
-        f"crop={largeur}:{hauteur},"
-        f"fps={config.VIDEO_FPS},setsar=1,format=yuv420p"
+        f"crop={largeur}:{hauteur}"
     )
+
+    if config.ZOOM_ACTIF and duree > 0.4:
+        marge = config.ZOOM_AMPLITUDE
+        grande_l, grande_h = int(largeur * marge) // 2 * 2, int(hauteur * marge) // 2 * 2
+
+        # `t` est le temps écoulé dans le plan. La progression va de 0 à 1,
+        # dans un sens ou dans l'autre selon la parité du plan.
+        progression = f"min(t/{duree:.2f},1)" if index % 2 == 0 else f"max(1-t/{duree:.2f},0)"
+        decalage_x = f"(iw-ow)/2*{progression}"
+        decalage_y = f"(ih-oh)/2*{progression}"
+
+        base = (
+            f"scale={grande_l}:{grande_h}:force_original_aspect_ratio=increase,"
+            f"crop={largeur}:{hauteur}:x='{decalage_x}':y='{decalage_y}'"
+        )
+
+    return f"{base},fps={config.VIDEO_FPS},setsar=1,format=yuv420p"
 
 
 # --- Découpage de la timeline en plans --------------------------------------
@@ -227,7 +258,10 @@ def render_single_pass(
     # Un filtre scale+crop par plan, puis un concat, puis les sous-titres.
     filters = []
     for index in range(len(shots)):
-        filters.append(f"[{index}:v]{_scale_crop(largeur, hauteur)}[v{index}]")
+        duree = shots[index]["end"] - shots[index]["start"]
+        filters.append(
+            f"[{index}:v]{_scale_crop(largeur, hauteur, index, duree)}[v{index}]"
+        )
 
     concat_inputs = "".join(f"[v{index}]" for index in range(len(shots)))
     filters.append(f"{concat_inputs}concat=n={len(shots)}:v=1:a=0[cat]")
@@ -299,7 +333,8 @@ def render_two_pass(
         arguments = [
             *_input_arguments(shot),
             "-an",
-            "-vf", _scale_crop(largeur, hauteur),
+            "-vf", _scale_crop(largeur, hauteur, index,
+                               shot["end"] - shot["start"]),
             "-c:v", encoder,
             *config.encoder_options(encoder),
             output,

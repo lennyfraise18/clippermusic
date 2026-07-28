@@ -327,6 +327,35 @@ def _normalise(word: str) -> str:
     return _strip_accents(word.lower().strip())
 
 
+def theme_general(segments: list[dict], language: str = "fr") -> str | None:
+    """Trouve l'ambiance dominante de la chanson, tous couplets confondus.
+
+    Pourquoi c'est nécessaire : chaque segment est traité isolément, donc un
+    vers mal transcrit ou sans mot concret tombait sur un visuel générique
+    sans rapport avec le reste — d'où des clips qui partaient dans tous les sens.
+
+    En comptant les thèmes sur l'ensemble des paroles, on obtient une ambiance
+    de fond qui sert de repli cohérent : mieux vaut une image dans l'esprit de
+    la chanson qu'un fond abstrait pris au hasard.
+    """
+    from collections import Counter
+
+    nlp = _load_nlp(language)
+    compteur: Counter[str] = Counter()
+
+    for segment in segments:
+        _, requete = _query_for_text(nlp, segment["text"])
+        if requete:
+            compteur[requete] += 1
+
+    if not compteur:
+        return None
+
+    # Un thème qui revient au moins deux fois caractérise la chanson.
+    requete, occurrences = compteur.most_common(1)[0]
+    return requete if occurrences >= 2 else None
+
+
 def build_queries(segments: list[dict], language: str = "fr") -> list[dict]:
     """Ajoute une clé "query" à chaque segment : la recherche vidéo à lancer.
 
@@ -338,12 +367,21 @@ def build_queries(segments: list[dict], language: str = "fr") -> list[dict]:
     fallback_index = 0
     results = []
 
+    # Ambiance dominante de la chanson : sert de repli quand un vers ne donne
+    # rien d'exploitable, pour garder une cohérence visuelle d'ensemble.
+    ambiance = theme_general(segments, language)
+
     for segment in segments:
         keyword, query = _query_for_text(nlp, segment["text"])
 
         if query is None:
-            query = FALLBACK_QUERIES[fallback_index % len(FALLBACK_QUERIES)]
-            fallback_index += 1
+            if ambiance:
+                # Une variante de l'ambiance, pour rester dans le ton sans
+                # servir exactement la même image qu'ailleurs.
+                query = ambiance
+            else:
+                query = FALLBACK_QUERIES[fallback_index % len(FALLBACK_QUERIES)]
+                fallback_index += 1
             keyword = keyword or ""
 
         enriched = dict(segment)

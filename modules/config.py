@@ -146,9 +146,21 @@ MAX_TRANSCRIBE_SECONDS = int(os.getenv("MAX_TRANSCRIBE_SECONDS", "120"))
 TRANSCRIBE_START_RATIO = 0.15
 
 # Durée minimale et maximale d'un plan vidéo de fond.
-# En dessous de 1,5 s l'oeil n'a pas le temps de lire ; au-delà de 6 s c'est mou.
-MIN_SHOT_SECONDS = 1.5
-MAX_SHOT_SECONDS = 6.0
+#
+# Rythme resserré : sur un edit de 15 secondes, des plans de 4 à 6 secondes
+# donnent une impression de diaporama. Entre 1,2 et 3 secondes, l'image change
+# assez souvent pour tenir l'attention, sans empêcher de lire les paroles.
+MIN_SHOT_SECONDS = float(os.getenv("MIN_SHOT_SECONDS", "1.2"))
+MAX_SHOT_SECONDS = float(os.getenv("MAX_SHOT_SECONDS", "3.0"))
+
+# Mouvement de caméra lent sur chaque plan (zoom avant ou arrière alterné).
+# Un plan fixe paraît figé ; un léger zoom continu donne de la vie, même sur
+# une image statique. Désactivable, car c'est l'effet le plus coûteux en calcul.
+ZOOM_ACTIF = os.getenv("ZOOM_ACTIF", "1").strip() not in {"0", "false", "no"}
+
+# Amplitude du zoom : 1.12 = 12 % d'agrandissement sur la durée du plan.
+# Au-delà, le mouvement devient visible au point de distraire.
+ZOOM_AMPLITUDE = float(os.getenv("ZOOM_AMPLITUDE", "1.12"))
 
 # Refus immédiat des fichiers trop longs ou trop courts (validation à l'upload).
 MIN_AUDIO_SECONDS = 5
