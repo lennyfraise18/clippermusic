@@ -58,16 +58,6 @@ Deux façons de continuer :
 - **tu ne l'as pas** → choisis un des morceaux libres proposés ci-dessous.
 """
 
-AIDE_SANS_MUSIQUE = """
-**Coché** — la vidéo sort **muette** (visuels + paroles). Tu la postes sur
-TikTok ou Instagram, puis tu ajoutes la musique depuis leur bibliothèque
-intégrée. C'est la méthode qui ne se fait jamais couper le son.
-
-**Décoché** — la musique est intégrée au fichier. Pratique pour vérifier la
-synchro ou garder la vidéo pour toi, mais à ne pas publier si le morceau est
-protégé.
-"""
-
 
 # --- Fonctions branchées sur l'interface ------------------------------------
 
@@ -628,6 +618,48 @@ CSS = """
     box-shadow: 0 14px 40px rgba(236,72,153,0.48) !important;
 }
 
+/* --- Badges des plateformes visées --- */
+.plateformes {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 1.1rem;
+}
+.tag {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 5px 13px;
+    border-radius: 999px;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.16);
+}
+.tag-tiktok  { background-image: linear-gradient(100deg, #ff0050, #00f2ea); }
+.tag-reels   { background-image: linear-gradient(100deg, #f9ce34, #ee2a7b 55%, #6228d7); }
+.tag-shorts  { background-image: linear-gradient(100deg, #ff0000, #ff6b6b); }
+.tag-format  { background: rgba(255,255,255,0.09); color: #cbd5e1; }
+
+/* --- Séparateur « ou » entre les deux façons de fournir la musique --- */
+.separateur {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0.9rem 0 0.2rem;
+    color: #8b93a3;
+    font-size: 0.86rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}
+.separateur::before, .separateur::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background-image: linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent);
+}
+
 /* --- Bloc de partage --- */
 #partage {
     border: 1px solid rgba(34,211,238,0.24);
@@ -668,8 +700,14 @@ ENTETE_HTML = """
   <span class="note">&#9836;</span>
   <span class="note">&#9834;</span>
   <h1>&#127916; ClipperMusic</h1>
-  <p>Dépose une chanson, récupère un clip vertical avec les paroles
-     en karaoké. Prêt à poster.</p>
+  <p>Ta musique devient un edit vertical avec les paroles en karaoké.
+     <b>Prêt à poster en 20 secondes.</b></p>
+  <div class="plateformes">
+    <span class="tag tag-tiktok">TikTok</span>
+    <span class="tag tag-reels">Reels</span>
+    <span class="tag tag-shorts">Shorts</span>
+    <span class="tag tag-format">1080&times;1920</span>
+  </div>
   <div class="egaliseur">
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
     <div class="barre"></div><div class="barre"></div><div class="barre"></div>
@@ -741,51 +779,49 @@ def construire_interface() -> gr.Blocks:
         # repasser par Whisper.
         etat_session = gr.State({})
 
-        # --- 1. La musique ---
-        # Le dépôt de fichier est le geste principal : il occupe l'écran.
-        # Chercher une musique libre est un cas secondaire, donc replié.
+        # --- 1. La musique : les deux façons d'en fournir, côte à côte ---
+        # Rien n'est replié ici. C'est la seule décision que l'utilisateur a à
+        # prendre, elle doit tenir en un coup d'oeil.
         fichier = gr.Audio(
-            label="🎵 Dépose ton fichier audio ici",
+            label="🎵 Dépose ton MP3",
             type="filepath",
             sources=["upload"],
         )
 
+        gr.HTML('<div class="separateur"><span>ou</span></div>')
+
+        lien = gr.Textbox(
+            label="🔗 Colle un lien",
+            placeholder="YouTube · Spotify · Deezer · lien .mp3 · ou un style : « pop »",
+            info="On identifie ton morceau et on te propose des musiques "
+                 "libres de droits, utilisables sans risque.",
+        )
+        message_lien = gr.Markdown("", visible=False)
+
         with gr.Accordion(
-            "Je n'ai pas de fichier — trouver une musique libre de droits",
-            open=False,
-        ):
-            lien = gr.Textbox(
-                label="Un style, ou un lien YouTube / Spotify / Deezer",
-                placeholder="pop · rock · acoustic · ou colle un lien",
-                info="On identifie le morceau et on propose des musiques "
-                     "libres de droits utilisables directement.",
-            )
-            message_lien = gr.Markdown("", visible=False)
+            "Pourquoi le son ne vient pas du lien", open=False, visible=False
+        ) as detail_lien:
+            gr.Markdown(EXPLICATION_LIEN)
 
-            with gr.Accordion(
-                "Pourquoi le son ne vient pas du lien", open=False, visible=False
-            ) as detail_lien:
-                gr.Markdown(EXPLICATION_LIEN)
-
-            choix_morceau = gr.Dropdown(
-                choices=[],
-                label="Morceaux libres de droits",
-                interactive=True,
-                allow_custom_value=True,
-                visible=False,
-            )
+        choix_morceau = gr.Dropdown(
+            choices=[],
+            label="🎶 Morceaux libres de droits",
+            interactive=True,
+            allow_custom_value=True,
+            visible=False,
+        )
 
         # --- 2. L'option qui compte ---
         sans_musique = gr.Checkbox(
-            label="🔇 Sans musique — recommandé pour poster sur TikTok / Instagram",
+            label="🔇 Sans musique — pour ajouter le son sur TikTok / Instagram",
             value=False,
+            info="Coche si tu publies : le son ajouté depuis la plateforme "
+                 "n'est jamais coupé.",
         )
-        with gr.Accordion("À quoi sert cette option", open=False):
-            gr.Markdown(AIDE_SANS_MUSIQUE)
 
         # --- 3. Le bouton ---
         bouton = gr.Button(
-            "🎬 Créer mon edit", variant="primary", size="lg",
+            "🚀 Créer mon edit", variant="primary", size="lg",
             elem_id="bouton-principal",
         )
 
@@ -812,10 +848,9 @@ def construire_interface() -> gr.Blocks:
             )
             bouton_refaire = gr.Button("🔄 Refaire avec ces paroles", variant="secondary")
 
-        with gr.Accordion("Diagnostic", open=False):
-            gr.Markdown(_diagnostic())
-
-        with gr.Accordion("Réglages avancés", open=False):
+        # Réglages et diagnostic regroupés : deux blocs repliés valaient un
+        # encombrement inutile pour des options que personne n'ouvre.
+        with gr.Accordion("⚙️ Réglages et diagnostic", open=False):
             with gr.Row():
                 modele = gr.Dropdown(
                     choices=["tiny", "base", "small", "medium"],
@@ -828,6 +863,7 @@ def construire_interface() -> gr.Blocks:
                     value="détection automatique",
                     label="Langue des paroles",
                 )
+            gr.Markdown(_diagnostic())
 
         # Le pied de page affiche le moteur réellement chargé. Sans ça,
         # impossible de savoir depuis l'extérieur quelle version tourne — ce
