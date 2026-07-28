@@ -155,6 +155,7 @@ def transcribe_audio(
     model_name: str | None = None,
     language: str | None = None,
     progress: Callable[[str], None] | None = None,
+    rang_passage: int = 0,
 ) -> dict:
     """Transcrit un fichier audio et renvoie le moment fort de la chanson.
 
@@ -185,7 +186,9 @@ def transcribe_audio(
             if essai and progress:
                 progress(f"Mémoire insuffisante : reprise avec le modèle « {modele} »…")
             try:
-                return _transcrire_via_sous_processus(audio_path, modele, language)
+                return _transcrire_via_sous_processus(
+                    audio_path, modele, language, rang_passage
+                )
             except TranscriptionError as erreur:
                 derniere = erreur
                 if "mémoire" not in str(erreur).lower():
@@ -194,8 +197,9 @@ def transcribe_audio(
 
     if progress:
         progress("Chargement du modèle de transcription…")
-    resultat = transcrire_directement(audio_path, model_name, language, progress)
-    return resultat
+    return transcrire_directement(
+        audio_path, model_name, language, progress, rang_passage
+    )
 
 
 # En dessous de cette mémoire, la transcription part dans un processus séparé.
@@ -206,6 +210,7 @@ def _transcrire_via_sous_processus(
     audio_path: str | Path,
     model_name: str | None,
     language: str | None,
+    rang_passage: int = 0,
 ) -> dict:
     """Lance la transcription dans un processus séparé et lit son résultat."""
     import json
@@ -217,7 +222,7 @@ def _transcrire_via_sous_processus(
         commande = [
             sys.executable, "-m", "modules.transcribe_worker",
             str(audio_path), str(sortie),
-            model_name or "", language or "",
+            model_name or "", language or "", str(rang_passage),
         ]
         try:
             resultat = subprocess.run(
@@ -257,6 +262,7 @@ def transcrire_directement(
     model_name: str | None = None,
     language: str | None = None,
     progress: Callable[[str], None] | None = None,
+    rang_passage: int = 0,
 ) -> dict:
     """Fait réellement la transcription, dans le processus courant."""
     from faster_whisper.audio import decode_audio
@@ -315,7 +321,7 @@ def transcrire_directement(
 
     if progress:
         progress("Sélection du moment fort…")
-    resultat = _select_best_window(segments, langue_detectee)
+    resultat = _select_best_window(segments, langue_detectee, rang_passage)
 
     # Les temps calculés sont relatifs au morceau analysé. On les recale sur le
     # fichier d'origine, sinon la bande son serait extraite au mauvais endroit.
@@ -516,7 +522,9 @@ def _poids_refrain(segments: list[dict]) -> dict[int, float]:
     return poids
 
 
-def _select_best_window(segments: list[dict], language: str) -> dict:
+def _select_best_window(
+    segments: list[dict], language: str, rang: int = 0
+) -> dict:
     """Garde au maximum MAX_CLIP_SECONDS de la partie la plus forte de la chanson.
 
     Couper les 15 premières secondes donnerait le plus souvent une intro
@@ -528,11 +536,14 @@ def _select_best_window(segments: list[dict], language: str) -> dict:
 
     if segments and segments[-1]["end"] - segments[0]["start"] <= max_seconds:
         window = segments
+        alternatives = 1
     else:
         poids = _poids_refrain(segments)
 
-        best_window: list[dict] = []
-        best_score = -1.0
+        # On note toutes les fenêtres possibles, puis on garde celle du rang
+        # demandé. `rang` permet à l'utilisateur de demander « un autre
+        # passage » sans relancer la transcription.
+        candidates: list[tuple[float, int, list[dict]]] = []
         for index, first in enumerate(segments):
             limit = first["start"] + max_seconds
             fenetre_indices = [
@@ -545,10 +556,21 @@ def _select_best_window(segments: list[dict], language: str) -> dict:
             score = sum(
                 len(segments[i]["words"]) * poids[i] for i in fenetre_indices
             )
-            if score > best_score:
-                best_score = score
-                best_window = [segments[i] for i in fenetre_indices]
-        window = best_window
+            candidates.append((score, index, [segments[i] for i in fenetre_indices]))
+
+        candidates.sort(key=lambda c: (-c[0], c[1]))
+
+        # Deux fenêtres qui se chevauchent presque donnent le même clip : on ne
+        # garde que des passages nettement distincts, sinon « autre passage »
+        # renverrait quasiment la même chose.
+        distinctes: list[tuple[float, int, list[dict]]] = []
+        for score, index, fenetre in candidates:
+            debut = fenetre[0]["start"]
+            if all(abs(debut - d[2][0]["start"]) > max_seconds * 0.5 for d in distinctes):
+                distinctes.append((score, index, fenetre))
+
+        alternatives = len(distinctes)
+        window = distinctes[rang % alternatives][2] if distinctes else candidates[0][2]
 
     # On recale tous les temps sur le début de la fenêtre retenue.
     # Un petit coussin avant le premier mot évite de démarrer pile sur la voix.
@@ -580,4 +602,9 @@ def _select_best_window(segments: list[dict], language: str) -> dict:
         "start_offset": offset,
         "duration": duration,
         "segments": shifted,
+        # Nombre de passages nettement différents disponibles dans ce morceau,
+        # et celui qui a été retenu. Permet à l'interface de proposer
+        # « essayer un autre passage » à bon escient.
+        "passages_disponibles": alternatives,
+        "passage_retenu": rang % max(alternatives, 1),
     }

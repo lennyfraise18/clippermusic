@@ -41,6 +41,7 @@ def generate_clip(
     inclure_audio: bool = True,
     transcription_prete: dict | None = None,
     clips_a_eviter: set[str] | None = None,
+    rang_passage: int = 0,
 ) -> dict:
     """Fabrique le clip complet et renvoie un dictionnaire de résultat.
 
@@ -82,7 +83,8 @@ def generate_clip(
             result = transcription_prete
         else:
             result = transcribe.transcribe_audio(
-                audio_path, model_name=model_name, language=language, progress=step
+                audio_path, model_name=model_name, language=language,
+                progress=step, rang_passage=rang_passage,
             )
         segments = result["segments"]
         detected_language = result["language"]
@@ -201,6 +203,12 @@ def generate_clip(
             "duration": result["duration"],
             "language": detected_language,
             "muet": not inclure_audio,
+            # Où se situe l'extrait dans la chanson, et combien d'autres
+            # passages sont disponibles : l'interface s'en sert pour proposer
+            # d'en essayer un autre.
+            "debut_dans_morceau": result["start_offset"],
+            "passages_disponibles": result.get("passages_disponibles", 1),
+            "passage_retenu": result.get("passage_retenu", 0),
             # Renvoyée telle quelle pour permettre une régénération sans
             # repasser par Whisper (correction des paroles, autres visuels).
             "transcription": result,

@@ -303,6 +303,73 @@ def refaire(
     return str(resultat["video"]), message, credits, session
 
 
+def changer_passage(
+    session: dict,
+    sans_musique: bool,
+    progress=gr.Progress(),
+):
+    """Refait le clip à partir d'un autre moment de la chanson.
+
+    La transcription complète est déjà faite : on ne relance que la sélection
+    du passage, ce qui prend quelques secondes au lieu de tout recommencer.
+    """
+    if not session or not session.get("audio"):
+        return None, "❌ Génère d'abord une première version.", "", session, gr.update()
+
+    chemin_audio = Path(session["audio"])
+    if not chemin_audio.exists():
+        return (None, "❌ Le fichier audio n'est plus disponible. Redépose-le.",
+                "", session, gr.update())
+
+    suivant = session.get("rang_passage", 0) + 1
+    total = max(session.get("passages", 1), 1)
+
+    etapes = {"n": 0}
+
+    def avancement(message: str) -> None:
+        etapes["n"] = min(etapes["n"] + 1, 30)
+        progress(etapes["n"] / 34, desc=message)
+
+    try:
+        resultat = pipeline.generate_clip(
+            chemin_audio,
+            model_name=session.get("modele"),
+            language=(None if session.get("langue") in (None, "détection automatique")
+                      else session["langue"]),
+            progress=avancement,
+            inclure_audio=not sans_musique,
+            clips_a_eviter=set(session.get("clips", [])),
+            rang_passage=suivant,
+        )
+    except (pipeline.PipelineError, liens.LienError) as erreur:
+        return None, f"❌ {erreur}", "", session, gr.update()
+    except Exception as erreur:
+        traceback.print_exc()
+        return None, f"❌ Erreur inattendue : {erreur}", "", session, gr.update()
+
+    progress(1.0, desc="Terminé.")
+
+    session = dict(session)
+    session["rang_passage"] = resultat.get("passage_retenu", suivant)
+    session["transcription"] = resultat["transcription"]
+    session["clips"] = list(session.get("clips", [])) + resultat["clip_ids"]
+
+    debut = resultat.get("debut_dans_morceau", 0)
+    minutes, secondes = divmod(int(debut), 60)
+    message = (
+        f"✅ **Nouveau passage** — extrait pris à **{minutes}:{secondes:02d}** "
+        f"({session['rang_passage'] + 1}ᵉ moment sur {total}).\n\n"
+        f"{resultat['duration']:.0f} s, {resultat['shots']} plans, "
+        f"généré en {resultat['seconds']:.0f} s."
+    )
+    credits = session.get("credit_musique", "") + "\n\n🎥 **Visuels :** " + ", ".join(
+        resultat["credits"][:6]
+    )
+
+    return (str(resultat["video"]), message, credits, session,
+            gr.update(value=str(resultat["video"])))
+
+
 def generer(
     fichier_upload: str | None,
     lien: str,
@@ -379,10 +446,18 @@ def generer(
 
         progress(1.0, desc="Terminé.")
 
+        # On dit d'où vient l'extrait : c'est la première question qu'on se
+        # pose en regardant le résultat.
+        debut = resultat.get("debut_dans_morceau", 0)
+        minutes, secondes = divmod(int(debut), 60)
         message = (
             f"✅ **Ton edit est prêt** — {resultat['duration']:.0f} s, "
-            f"{resultat['shots']} plans, généré en {resultat['seconds']:.0f} s."
+            f"{resultat['shots']} plans, généré en {resultat['seconds']:.0f} s.\n\n"
+            f"🎯 Extrait pris à **{minutes}:{secondes:02d}** dans le morceau "
+            f"(le passage le plus marquant)."
         )
+        if resultat.get("passages_disponibles", 1) > 1:
+            message += " Pas convaincu ? Essaie **un autre moment**."
         if resultat["warnings"]:
             message += "\n\n⚠️ " + " • ".join(resultat["warnings"][:2])
 
@@ -402,25 +477,34 @@ def generer(
                 "version publiable."
             )
 
-        # Mémorisé pour permettre « Corriger et refaire » sans retranscrire.
+        # Mémorisé pour permettre « Corriger et refaire » et « Autre moment »
+        # sans repasser par la transcription.
         session = {
             "audio": str(chemin_audio),
             "transcription": resultat["transcription"],
             "clips": resultat["clip_ids"],
             "credit_musique": credit_musique,
+            "rang_passage": resultat.get("passage_retenu", 0),
+            "passages": resultat.get("passages_disponibles", 1),
+            "modele": modele,
+            "langue": langue,
         }
 
         return (
             str(resultat["video"]), message, credits, resultat["lyrics"],
             session, gr.update(visible=True),
+            gr.update(visible=True, value=str(resultat["video"])),
+            gr.update(visible=resultat.get("passages_disponibles", 1) > 1),
         )
 
     except (pipeline.PipelineError, liens.LienError) as erreur:
-        return None, f"❌ {erreur}", "", "", {}, gr.update(visible=False)
+        return (None, f"❌ {erreur}", "", "", {}, gr.update(visible=False),
+                gr.update(visible=False), gr.update(visible=False))
     except Exception as erreur:  # filet : jamais de trace Python à l'écran
         traceback.print_exc()
         return (
             None, f"❌ Erreur inattendue : {erreur}", "", "", {},
+            gr.update(visible=False), gr.update(visible=False),
             gr.update(visible=False),
         )
 
@@ -880,6 +964,15 @@ def construire_interface() -> gr.Blocks:
         # évite qu'un clip vertical remplisse tout l'écran d'un téléphone.
         video = gr.Video(label="Ton clip", show_download_button=True)
 
+        with gr.Row():
+            telecharger = gr.DownloadButton(
+                "📥 Télécharger", variant="primary",
+                visible=False, elem_id="bouton-telecharger",
+            )
+            autre_passage = gr.Button(
+                "🔀 Autre moment de la chanson", variant="secondary", visible=False
+            )
+
         # Le mode d'emploi de publication n'apparaît qu'une fois le clip prêt :
         # avant, il n'aurait rien à quoi se rapporter.
         bloc_partage = gr.HTML(PARTAGE_HTML, visible=False)
@@ -940,13 +1033,20 @@ def construire_interface() -> gr.Blocks:
             generer,
             inputs=[fichier, lien, etat_morceaux, choix_morceau, sans_musique,
                     modele, langue],
-            outputs=[video, message, credits, paroles, etat_session, bloc_partage],
+            outputs=[video, message, credits, paroles, etat_session,
+                     bloc_partage, telecharger, autre_passage],
         )
 
         bouton_refaire.click(
             refaire,
             inputs=[etat_session, paroles, sans_musique],
             outputs=[video, message, credits, etat_session],
+        )
+
+        autre_passage.click(
+            changer_passage,
+            inputs=[etat_session, sans_musique],
+            outputs=[video, message, credits, etat_session, telecharger],
         )
 
     return demo

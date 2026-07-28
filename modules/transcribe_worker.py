@@ -40,10 +40,11 @@ def main() -> int:
     sortie = Path(sys.argv[2])
     modele = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
     langue = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
+    rang = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else 0
 
     try:
         resultat = transcribe.transcrire_directement(
-            audio_path, model_name=modele, language=langue
+            audio_path, model_name=modele, language=langue, rang_passage=rang
         )
     except transcribe.TranscriptionError as erreur:
         sortie.write_text(
