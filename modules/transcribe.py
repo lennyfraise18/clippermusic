@@ -317,12 +317,11 @@ def transcrire_directement(
     segments = _drop_unreliable(segments)
 
     total_words = sum(len(segment["words"]) for segment in segments)
+
+    # Pas de paroles : ce n'est pas une erreur, c'est un instrumental. Le
+    # pipeline bascule alors sur un montage d'ambiance, sans sous-titres.
     if total_words < config.MIN_WORDS_REQUIRED:
-        raise TranscriptionError(
-            "Aucune parole détectée dans ce fichier.\n"
-            "C'est normal pour un morceau instrumental : le clip karaoké a besoin "
-            "de paroles chantées. Essaie un autre morceau."
-        )
+        return _extrait_instrumental(audio, decalage, langue_detectee)
 
     if progress:
         progress("Sélection du moment fort…")
@@ -489,6 +488,52 @@ def _drop_unreliable(segments: list[dict]) -> list[dict]:
 
         kept.append(segment)
     return kept
+
+
+def _extrait_instrumental(audio, decalage: float, langue: str) -> dict:
+    """Choisit le meilleur passage d'un morceau sans paroles.
+
+    Sans texte, le critère de sélection change : on ne cherche plus le refrain
+    mais le moment où **il se passe le plus de choses** — la densité de temps
+    forts. C'est en général le drop, le refrain instrumental, le moment où
+    l'arrangement s'ouvre. Exactement ce qu'on veut dans quinze secondes.
+    """
+    from modules import rythme
+
+    duree_totale = len(audio) / 16000
+    fenetre = float(config.MAX_CLIP_SECONDS)
+
+    tous = rythme.detecter_temps_forts(audio)
+
+    debut_relatif = 0.0
+    if tous and duree_totale > fenetre:
+        # Fenêtre glissante : on retient celle qui contient le plus de temps
+        # forts, donc la section la plus dense du morceau.
+        meilleur = -1
+        for candidat in [t for t in tous if t + fenetre <= duree_totale]:
+            compte = sum(1 for t in tous if candidat <= t < candidat + fenetre)
+            if compte > meilleur:
+                meilleur = compte
+                debut_relatif = candidat
+
+    fin_relative = min(debut_relatif + fenetre, duree_totale)
+    temps_forts = [
+        round(t - debut_relatif, 3)
+        for t in tous
+        if debut_relatif <= t < fin_relative
+    ]
+
+    return {
+        "language": langue,
+        "start_offset": decalage + debut_relatif,
+        "duration": fin_relative - debut_relatif,
+        "segments": [],
+        # Signale au pipeline de basculer en montage d'ambiance.
+        "instrumental": True,
+        "passages_disponibles": 1,
+        "passage_retenu": 0,
+        "temps_forts": temps_forts,
+    }
 
 
 def _decalage_analyse(audio_path) -> float:

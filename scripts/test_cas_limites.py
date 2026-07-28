@@ -36,8 +36,14 @@ def _ffmpeg(arguments: list[str]) -> None:
     )
 
 
-def cas(numero: int, titre: str, action, attendu: str) -> bool:
-    """Lance `action` et vérifie qu'elle lève une erreur au message lisible."""
+def cas(numero: int, titre: str, action, attendu: str | tuple[str, ...]) -> bool:
+    """Lance `action` et vérifie qu'elle lève une erreur au message lisible.
+
+    `attendu` peut lister plusieurs formulations acceptables : selon les
+    octets rencontrés, ffprobe échoue franchement ou lit un flux sans pouvoir
+    en tirer la durée. Les deux messages sont justes pour l'utilisateur.
+    """
+    attendus = (attendu,) if isinstance(attendu, str) else attendu
     print(f"\n--- Cas {numero} : {titre} ---")
     try:
         action()
@@ -45,10 +51,10 @@ def cas(numero: int, titre: str, action, attendu: str) -> bool:
             pipeline.PipelineError) as erreur:
         message = str(erreur)
         print(f"  message affiché : « {message.splitlines()[0]} »")
-        if attendu.lower() in message.lower():
+        if any(mot.lower() in message.lower() for mot in attendus):
             print("  OK — message clair et attendu.")
             return True
-        print(f"  ÉCHEC — le message ne mentionne pas « {attendu} ».")
+        print(f"  ÉCHEC — le message ne mentionne aucun de {attendus}.")
         return False
     except Exception as erreur:
         print(f"  ÉCHEC — exception brute, pas un message pour l'utilisateur :")
@@ -73,7 +79,7 @@ def cas_2_corrompu() -> bool:
     # c'est ce qui compte pour l'utilisateur.
     return cas(2, "fichier corrompu (octets au hasard)",
                lambda: audio.validate_audio(chemin),
-               "corrompu")
+               ("corrompu", "pas un audio lisible"))
 
 
 def cas_3_sans_audio() -> bool:
@@ -95,7 +101,13 @@ def cas_4_trop_court() -> bool:
 
 
 def cas_5_instrumental() -> bool:
-    """Le cas le plus important : Whisper ne doit pas inventer des paroles."""
+    """Un instrumental ne doit pas être refusé, mais basculer en mode ambiance.
+
+    Le point important reste le même : Whisper ne doit pas inventer de paroles
+    sur un morceau qui n'en a pas. Ce qui change, c'est la suite — au lieu
+    d'un message d'erreur, l'application produit un montage d'ambiance calé
+    sur le rythme.
+    """
     chemin = BAC / "instrumental.mp3"
     # Un accord de trois sinus : de la musique, aucune voix.
     _ffmpeg([
@@ -108,23 +120,26 @@ def cas_5_instrumental() -> bool:
     print("\n--- Cas 5 : fichier instrumental (transcription réelle, ~30 s) ---")
     try:
         resultat = transcribe.transcribe_audio(chemin)
-    except transcribe.TranscriptionError as erreur:
-        message = str(erreur)
-        print(f"  message affiché : « {message.splitlines()[0]} »")
-        if "aucune parole" in message.lower():
-            print("  OK — Whisper n'a pas inventé de paroles.")
-            return True
-        print("  ÉCHEC — message inattendu.")
-        return False
     except Exception as erreur:
-        print(f"  ÉCHEC — exception brute : {type(erreur).__name__}: {erreur}")
+        print(f"  ÉCHEC — exception au lieu d'un montage d'ambiance : "
+              f"{type(erreur).__name__}: {erreur}")
         return False
 
     mots = sum(len(s["words"]) for s in resultat["segments"])
-    print(f"  ÉCHEC — {mots} mots « détectés » sur un instrumental :")
-    for segment in resultat["segments"][:3]:
-        print(f"    « {segment['text']} »")
-    return False
+    if mots:
+        print(f"  ÉCHEC — {mots} mots « détectés » sur un instrumental :")
+        for segment in resultat["segments"][:3]:
+            print(f"    « {segment['text']} »")
+        return False
+
+    if not resultat.get("instrumental"):
+        print("  ÉCHEC — le morceau n'a pas été reconnu comme instrumental.")
+        return False
+
+    print(f"  OK — aucune parole inventée, bascule en mode ambiance "
+          f"({resultat['duration']:.0f} s, "
+          f"{len(resultat.get('temps_forts') or [])} temps forts).")
+    return True
 
 
 def cas_6_nettoyage() -> bool:

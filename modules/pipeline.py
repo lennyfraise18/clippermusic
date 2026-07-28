@@ -90,12 +90,19 @@ def generate_clip(
         segments = result["segments"]
         detected_language = result["language"]
 
-        # --- 3. Mots-clés visuels -------------------------------------------
-        step("Analyse des paroles et choix des images…")
-        segments = keywords.build_queries(segments, detected_language)
+        instrumental = bool(result.get("instrumental"))
 
-        # --- 4. Découpage en plans ------------------------------------------
-        shots = editor.plan_shots(segments, result["duration"])
+        # --- 3. Mots-clés visuels -------------------------------------------
+        if instrumental:
+            step("Morceau instrumental : montage d'ambiance…")
+            segments = []
+            shots = _plans_instrumentaux(result)
+        else:
+            step("Analyse des paroles et choix des images…")
+            segments = keywords.build_queries(segments, detected_language)
+
+            # --- 4. Découpage en plans --------------------------------------
+            shots = editor.plan_shots(segments, result["duration"])
 
         # Les coupes glissent vers le temps fort le plus proche : c'est ce qui
         # fait qu'un montage « tombe juste » à l'oreille.
@@ -223,6 +230,11 @@ def generate_clip(
         _prune_old_outputs()
 
         lyrics = "\n".join(segment["text"] for segment in segments)
+        if instrumental:
+            lyrics = (
+                "Morceau instrumental : aucune parole à afficher.\n"
+                "Le montage suit le rythme de la musique."
+            )
 
         return {
             "video": final_path,
@@ -236,6 +248,7 @@ def generate_clip(
             "duration": result["duration"],
             "language": detected_language,
             "muet": not inclure_audio,
+            "instrumental": instrumental,
             # Où se situe l'extrait dans la chanson, et combien d'autres
             # passages sont disponibles : l'interface s'en sert pour proposer
             # d'en essayer un autre.
@@ -259,6 +272,45 @@ def generate_clip(
     finally:
         # Nettoyage garanti, même si tout a explosé au milieu.
         editor.cleanup(work_dir)
+
+
+def _plans_instrumentaux(result: dict) -> list[dict]:
+    """Découpe un morceau sans paroles en plans, calés sur ses temps forts.
+
+    Sans texte, il n'y a plus de phrase pour rythmer le montage : ce sont les
+    temps forts qui décident. On coupe donc sur eux, en gardant des plans
+    d'une durée regardable — trop courts ils clignotent, trop longs ils
+    endorment.
+    """
+    duree = result["duration"]
+    temps_forts = result.get("temps_forts") or []
+
+    cible = (config.MIN_SHOT_SECONDS + config.MAX_SHOT_SECONDS) / 2
+
+    frontieres = [0.0]
+    if temps_forts:
+        for instant in temps_forts:
+            if instant - frontieres[-1] >= cible and duree - instant >= config.MIN_SHOT_SECONDS:
+                frontieres.append(instant)
+    else:
+        # Aucun temps fort détecté : découpage régulier, faute de mieux.
+        instant = cible
+        while duree - instant >= config.MIN_SHOT_SECONDS:
+            frontieres.append(instant)
+            instant += cible
+
+    frontieres.append(duree)
+
+    requetes = keywords.requetes_instrumentales(len(frontieres) - 1)
+    return [
+        {
+            "start": frontieres[i],
+            "end": frontieres[i + 1],
+            "query": requetes[i],
+            "keyword": "",
+        }
+        for i in range(len(frontieres) - 1)
+    ]
 
 
 def _close_gaps(shots: list[dict], total_duration: float) -> list[dict]:

@@ -273,6 +273,87 @@ FALLBACK_QUERIES = [
     "rain window night",
 ]
 
+# --- Morceaux sans paroles --------------------------------------------------
+#
+# Un instrumental, un beat, une maquette : rien à transcrire, donc aucun
+# mot-clé à extraire. Refuser ces morceaux privait l'outil de tout un pan de
+# la production musicale.
+#
+# À la place, on puise dans un répertoire d'images « aspirationnelles » : les
+# codes visuels des edits qui tournent — hauteur, vitesse, lumière, matière.
+# Ce ne sont pas des illustrations du texte (il n'y en a pas), mais une
+# ambiance qui tient sur quinze secondes.
+#
+# Les familles sont mélangées à la génération pour qu'un clip alterne les
+# registres au lieu d'enchaîner cinq plans de voiture.
+AMBIANCES_INSTRUMENTALES = {
+    "hauteur": [
+        "aerial drone mountain sunrise",
+        "cliff edge ocean aerial",
+        "skyscraper rooftop city aerial",
+        "airplane wing above clouds",
+        "hot air balloon sunrise valley",
+    ],
+    "vitesse": [
+        "car driving highway night lights",
+        "motorcycle riding city night",
+        "train window landscape motion",
+        "speedboat ocean wake aerial",
+        "running through city night",
+    ],
+    "lumiere": [
+        "neon signs rain reflection night",
+        "golden hour sun flare field",
+        "city lights bokeh out of focus",
+        "light rays through fog forest",
+        "sunset silhouette horizon",
+    ],
+    "matiere": [
+        "ink drop water slow motion",
+        "smoke swirling dark background",
+        "sparks flying slow motion dark",
+        "water surface ripple macro",
+        "fabric flowing slow motion",
+    ],
+    "solitude": [
+        "person walking empty street night",
+        "silhouette window city view",
+        "lone figure desert road",
+        "empty swimming pool night",
+        "person on rooftop city skyline",
+    ],
+    "luxe": [
+        "modern architecture minimal interior",
+        "marble texture luxury detail",
+        "yacht deck ocean sunset",
+        "vintage car close up detail",
+        "champagne pouring slow motion",
+    ],
+}
+
+
+def requetes_instrumentales(nombre: int) -> list[str]:
+    """Construit une suite de requêtes visuelles pour un morceau sans paroles.
+
+    On alterne volontairement les familles : cinq plans de voiture à la suite
+    ressemblent à une publicité automobile, alors qu'un clip a besoin de
+    respirer entre les registres.
+    """
+    import random
+
+    familles = list(AMBIANCES_INSTRUMENTALES)
+    random.shuffle(familles)
+
+    requetes: list[str] = []
+    tour = 0
+    while len(requetes) < nombre:
+        famille = familles[tour % len(familles)]
+        choix = AMBIANCES_INSTRUMENTALES[famille]
+        requetes.append(choix[(tour // len(familles)) % len(choix)])
+        tour += 1
+
+    return requetes[:nombre]
+
 # Mots trop fréquents ou trop creux pour donner une image, en plus des
 # mots vides que spaCy connaît déjà (l'argot et les tics de langage oraux).
 EXTRA_STOPWORDS = {
