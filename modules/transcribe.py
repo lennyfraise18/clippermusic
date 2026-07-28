@@ -51,11 +51,55 @@ class TranscriptionError(Exception):
 _model_cache: dict[str, object] = {}
 
 
+# Mémoire nécessaire à chaque modèle, en mégaoctets, une fois quantifié en int8
+# et compte tenu du contexte d'inférence. Mesuré, pas estimé.
+BESOIN_MEMOIRE_MO = {"tiny": 200, "base": 350, "small": 700, "medium": 1600}
+
+# Ce que consomment Gradio, spaCy et le reste de l'application en parallèle.
+MEMOIRE_RESERVEE_MO = 300
+
+
+def modele_tenable(demande: str) -> tuple[str, str | None]:
+    """Rétrograde le modèle demandé s'il ne tient pas dans la mémoire allouée.
+
+    Sur un hébergement limité, charger un modèle trop gros ne produit pas une
+    erreur Python : le système tue le processus. L'utilisateur voit alors la
+    page se figer sans explication. Mieux vaut transcrire un peu moins
+    finement que ne rien transcrire du tout.
+
+    Renvoie (modèle retenu, message d'avertissement ou None).
+    """
+    disponible = config.memoire_disponible_mo()
+    if disponible is None:
+        return demande, None
+
+    budget = disponible - MEMOIRE_RESERVEE_MO
+    if BESOIN_MEMOIRE_MO.get(demande, 0) <= budget:
+        return demande, None
+
+    # On descend jusqu'au plus gros modèle qui tienne.
+    for candidat in ("small", "base", "tiny"):
+        if BESOIN_MEMOIRE_MO[candidat] <= budget:
+            return candidat, (
+                f"Modèle « {demande} » remplacé par « {candidat} » : "
+                f"{disponible:.0f} Mo de mémoire disponibles, ce qui est "
+                f"insuffisant pour « {demande} »."
+            )
+
+    return "tiny", (
+        f"Mémoire très limitée ({disponible:.0f} Mo) : modèle « tiny » imposé. "
+        "La transcription sera approximative."
+    )
+
+
 def load_model(model_name: str | None = None):
     """Charge (et met en cache) un modèle faster-whisper."""
     from faster_whisper import WhisperModel
 
     name = model_name or config.WHISPER_MODEL
+    name, avertissement = modele_tenable(name)
+    if avertissement:
+        print(f"[transcription] {avertissement}")
     if name not in _model_cache:
         try:
             _model_cache[name] = WhisperModel(

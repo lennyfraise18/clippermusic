@@ -96,15 +96,21 @@ def _diagnostic() -> str:
     dont on ne lit pas les logs, la mémoire allouée est la première chose à
     vérifier — c'est elle qui fait tuer le conteneur au chargement du modèle.
     """
+    from modules import transcribe
+
     lignes = [f"- **Moteur** : {_signature_moteur()}"]
 
     memoire = config.memoire_disponible_mo()
     if memoire is None:
         lignes.append("- **Mémoire allouée** : non mesurable (hors conteneur Linux)")
     else:
-        # La transcription demande environ 400 Mo, le montage un peu plus.
-        verdict = "suffisante" if memoire >= 700 else "⚠️ probablement insuffisante"
-        lignes.append(f"- **Mémoire allouée** : {memoire:.0f} Mo — {verdict}")
+        lignes.append(f"- **Mémoire allouée** : {memoire:.0f} Mo")
+
+    retenu, avertissement = transcribe.modele_tenable(config.WHISPER_MODEL)
+    if avertissement:
+        lignes.append(f"- **Modèle réellement utilisé** : {retenu} ⚠️ {avertissement}")
+    else:
+        lignes.append(f"- **Modèle réellement utilisé** : {retenu}")
 
     lignes.append(f"- **Extrait analysé** : {config.MAX_TRANSCRIBE_SECONDS} s max")
     lignes.append(f"- **Clip produit** : {config.MAX_CLIP_SECONDS} s max")
