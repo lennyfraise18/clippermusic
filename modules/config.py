@@ -137,9 +137,10 @@ MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "15"))
 # en entier pour n'en garder que quinze secondes — l'essentiel du calcul part
 # donc à la poubelle.
 #
-# 120 secondes prises après l'intro couvrent en général couplet, refrain,
-# couplet, refrain : largement de quoi trouver le moment fort.
-MAX_TRANSCRIBE_SECONDS = int(os.getenv("MAX_TRANSCRIBE_SECONDS", "120"))
+# 90 secondes prises après l'intro couvrent en général couplet, refrain,
+# couplet : assez pour trouver le moment fort, sans transcrire une fin de
+# morceau dont on ne gardera rien. Chaque seconde analysée coûte du temps.
+MAX_TRANSCRIBE_SECONDS = int(os.getenv("MAX_TRANSCRIBE_SECONDS", "90"))
 
 # On ne commence pas à zéro : les premières secondes sont souvent une intro
 # instrumentale, sans parole à transcrire.
@@ -184,9 +185,11 @@ MAX_AUDIO_SECONDS = 60 * 12  # 12 minutes
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base").strip() or "base"
 
 # Nombre de cœurs utilisés par la transcription.
-# 0 laisse la bibliothèque décider. Sur un hébergement mutualisé, la limiter
-# évite qu'elle réserve de la mémoire pour des cœurs qu'elle n'aura jamais.
-CPU_THREADS = int(os.getenv("CPU_THREADS", "2"))
+#
+# Mesuré sur le fichier de test : passer de 2 à 4 threads fait gagner 20 % sur
+# la transcription. Au-delà des cœurs réellement disponibles, on perd du temps
+# en synchronisation — d'où le plafond sur le nombre de cœurs de la machine.
+CPU_THREADS = int(os.getenv("CPU_THREADS", "0")) or min(4, os.cpu_count() or 2)
 
 # Whisper "hallucine" volontiers sur du silence ou de l'instrumental.
 # Tout segment dont la confiance moyenne est sous ce seuil est jeté.

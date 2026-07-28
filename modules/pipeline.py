@@ -13,6 +13,7 @@ Deux garanties tenues ici :
 import shutil
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
@@ -129,16 +130,34 @@ def generate_clip(
         if clips_a_eviter:
             finder.used_ids.update(clips_a_eviter)
 
-        usable_shots = []
-
-        for index, shot in enumerate(shots, start=1):
-            step(f"Vidéo de fond {index}/{len(shots)}…")
-            found = finder.find_and_download(shot["query"] or "abstract background")
-            if found is None:
+        # La sélection reste séquentielle — elle est quasi instantanée grâce au
+        # cache, et l'anti-répétition a besoin d'un ordre déterminé. Seuls les
+        # téléchargements partent en parallèle : ce sont eux qui attendent le
+        # réseau, et ils sont indépendants les uns des autres.
+        selection = []
+        for shot in shots:
+            candidate = finder.find(shot["query"] or "abstract background")
+            if candidate is None:
                 warnings.append(f"Aucune vidéo trouvée pour « {shot['query']} ».")
                 continue
+            selection.append((shot, candidate))
 
-            clip_path, candidate = found
+        step(f"Téléchargement de {len(selection)} clips…")
+
+        def recuperer(paire):
+            shot, candidate = paire
+            chemin = finder.download(candidate)
+            return shot, candidate, chemin
+
+        with ThreadPoolExecutor(max_workers=min(6, max(len(selection), 1))) as pool:
+            telecharges = list(pool.map(recuperer, selection))
+
+        usable_shots = []
+        for shot, candidate, clip_path in telecharges:
+            if clip_path is None:
+                warnings.append(f"Téléchargement échoué pour « {shot['query']} ».")
+                continue
+
             clip_duration = videos.probe_video_duration(clip_path)
             needed = shot["end"] - shot["start"]
 
