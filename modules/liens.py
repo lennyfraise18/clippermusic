@@ -67,6 +67,77 @@ class LienError(Exception):
     """Erreur de lecture d'un lien, message affichable dans l'interface."""
 
 
+# Extensions reconnues comme un fichier audio directement téléchargeable.
+EXTENSIONS_AUDIO = (
+    ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".oga", ".opus", ".aac", ".wma",
+)
+
+# Un fichier audio de plus de 60 Mo n'est pas une chanson : on refuse avant
+# de saturer le disque de l'hébergeur.
+TAILLE_MAX_AUDIO = 60 * 1024 * 1024
+
+
+def est_fichier_audio_direct(url: str) -> bool:
+    """Vrai si le lien pointe directement vers un fichier audio.
+
+    Cas courant et parfaitement légitime : un MP3 hébergé sur archive.org, un
+    site d'artiste, ou n'importe quel serveur public. Rien à contourner, le
+    fichier est simplement téléchargeable.
+    """
+    sans_parametres = (url or "").split("?")[0].split("#")[0].lower()
+    return sans_parametres.endswith(EXTENSIONS_AUDIO)
+
+
+def telecharger_audio_direct(url: str, destination) -> "Path":
+    """Télécharge un fichier audio accessible publiquement.
+
+    Le fichier est ensuite validé par audio.validate_audio(), donc un lien qui
+    renvoie une page HTML au lieu d'un son est rejeté avec un message clair.
+    """
+    from pathlib import Path
+
+    from modules import audio as _audio
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        reponse = requests.get(url, headers=HEADERS, timeout=180, stream=True)
+        reponse.raise_for_status()
+    except requests.RequestException as erreur:
+        raise LienError(f"Téléchargement impossible depuis ce lien : {erreur}")
+
+    annonce = reponse.headers.get("content-length")
+    if annonce and int(annonce) > TAILLE_MAX_AUDIO:
+        raise LienError(
+            f"Ce fichier fait {int(annonce) / 1e6:.0f} Mo, c'est trop lourd "
+            f"(maximum {TAILLE_MAX_AUDIO // 1024 // 1024} Mo)."
+        )
+
+    ecrit = 0
+    try:
+        with open(destination, "wb") as fichier:
+            for morceau in reponse.iter_content(chunk_size=1 << 16):
+                ecrit += len(morceau)
+                if ecrit > TAILLE_MAX_AUDIO:
+                    raise LienError("Fichier trop lourd, téléchargement interrompu.")
+                fichier.write(morceau)
+    except OSError as erreur:
+        raise LienError(f"Écriture du fichier impossible : {erreur}")
+
+    # Le vrai test : ffprobe sait-il le lire ?
+    try:
+        _audio.validate_audio(destination)
+    except _audio.AudioError as erreur:
+        destination.unlink(missing_ok=True)
+        raise LienError(
+            f"Le lien a bien répondu, mais le fichier n'est pas un audio "
+            f"exploitable.\n{erreur}"
+        )
+
+    return destination
+
+
 def detecter_plateforme(texte: str) -> str | None:
     """Renvoie la clé de la plateforme reconnue, ou None."""
     minuscules = (texte or "").lower()
@@ -92,8 +163,11 @@ def lire_titre(url: str) -> dict:
 
     if cle is None:
         raise LienError(
-            "Lien non reconnu. Colle un lien YouTube, Spotify ou Deezer — "
-            "ou dépose directement ton fichier audio."
+            "Lien non reconnu. Ce champ accepte :\n"
+            "• un lien YouTube, Spotify ou Deezer (pour identifier un morceau) ;\n"
+            "• un lien direct vers un fichier audio (.mp3, .wav, .m4a…) ;\n"
+            "• un style de musique (« pop », « rock », « acoustic »).\n"
+            "Sinon, dépose ton fichier dans la zone au-dessus."
         )
 
     plateforme = PLATEFORMES[cle]

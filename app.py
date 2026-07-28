@@ -87,6 +87,19 @@ def analyser_entree(lien: str):
             [],
         )
 
+    # Lien direct vers un fichier audio : rien à identifier, on l'utilisera tel
+    # quel au moment de générer.
+    if liens.est_fichier_audio_direct(lien):
+        return (
+            gr.update(
+                value="🎵 Fichier audio détecté. Clique sur **Créer mon edit**.",
+                visible=True,
+            ),
+            gr.update(visible=False),
+            gr.update(choices=[], value=None, visible=False),
+            [],
+        )
+
     # Un mot-clé simple ("pop", "rock") : on cherche directement des morceaux libres.
     if not liens.est_un_lien(lien) and liens.detecter_plateforme(lien) is None:
         try:
@@ -238,6 +251,7 @@ def refaire(
 
 def generer(
     fichier_upload: str | None,
+    lien: str,
     morceaux_proposes: list,
     libelle_choisi: str,
     sans_musique: bool,
@@ -267,6 +281,17 @@ def generer(
             chemin_audio = Path(fichier_upload)
             credit_musique = "🎵 **Musique :** ton fichier."
             musique_protegee = True
+
+        elif liens.est_fichier_audio_direct(lien or ""):
+            progress(0.01, desc="Téléchargement du fichier audio…")
+            config.ensure_dirs()
+            nom = Path((lien or "").split("?")[0]).name or "audio_distant.mp3"
+            chemin_audio = liens.telecharger_audio_direct(
+                lien, config.WORK_DIR / f"jamendo_{nom}"
+            )
+            credit_musique = f"🎵 **Musique :** fichier récupéré depuis {lien}"
+            musique_protegee = True
+
         else:
             progress(0.01, desc="Téléchargement du morceau…")
             chemin_audio, morceau = _preparer_morceau_libre(
@@ -336,7 +361,7 @@ def generer(
             session, gr.update(visible=True),
         )
 
-    except pipeline.PipelineError as erreur:
+    except (pipeline.PipelineError, liens.LienError) as erreur:
         return None, f"❌ {erreur}", "", "", {}, gr.update(visible=False)
     except Exception as erreur:  # filet : jamais de trace Python à l'écran
         traceback.print_exc()
@@ -646,7 +671,7 @@ def construire_interface() -> gr.Blocks:
 
         bouton.click(
             generer,
-            inputs=[fichier, etat_morceaux, choix_morceau, sans_musique,
+            inputs=[fichier, lien, etat_morceaux, choix_morceau, sans_musique,
                     modele, langue],
             outputs=[video, message, credits, paroles, etat_session, bloc_partage],
         )
