@@ -709,6 +709,37 @@ body, gradio-app { background: #07070b !important; }
     box-shadow: 0 14px 40px rgba(236,72,153,0.48) !important;
 }
 
+/* --- Les trois étapes, sous le bouton --- */
+.etapes {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin: 0.9rem 0 0.2rem;
+    flex-wrap: wrap;
+}
+.etape {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    color: #8b93a3;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.025);
+}
+.etape b {
+    display: grid;
+    place-items: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    font-size: 0.66rem;
+    color: #0a0a0c;
+    background-image: linear-gradient(135deg, #a855f7, #ec4899);
+}
+.fleche { color: #4b5563; font-size: 0.8rem; }
+
 /* --- Badges des plateformes visées --- */
 .plateformes {
     position: relative;
@@ -970,6 +1001,18 @@ def construire_interface() -> gr.Blocks:
         bouton = gr.Button(
             "🚀 Créer mon edit", variant="primary", size="lg",
             elem_id="bouton-principal",
+        )
+
+        # Ce que l'application fait pendant l'attente. Sans ça, deux minutes
+        # de barre de progression paraissent longues et opaques.
+        gr.HTML(
+            '<div class="etapes">'
+            '<span class="etape"><b>1</b>Paroles reconnues</span>'
+            '<span class="fleche">&rarr;</span>'
+            '<span class="etape"><b>2</b>Visuels choisis</span>'
+            '<span class="fleche">&rarr;</span>'
+            '<span class="etape"><b>3</b>Montage sur le rythme</span>'
+            "</div>"
         )
 
         # --- 4. Le résultat ---
