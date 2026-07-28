@@ -908,9 +908,10 @@ ENTETE_HTML = """
   <span class="note">&#9836;</span>
   <span class="note">&#9834;</span>
   <h1>&#127916; ClipperMusic</h1>
-  <p><b>Enregistrer le titre n'est que la moitié du travail.</b><br>
-     Transforme un morceau en edit vertical prêt à poster — paroles
-     synchronisées, coupes calées sur le rythme, format natif des réseaux.</p>
+  <p><b>Un bon titre que personne ne voit reste un bon titre que personne
+     n'écoute.</b><br>
+     Dépose ton morceau. Repars avec la vidéo verticale qui le fera
+     découvrir&nbsp;— paroles calées au mot près, coupes sur le rythme.</p>
   <div class="plateformes">
     <span class="tag tag-tiktok">TikTok</span>
     <span class="tag tag-reels">Reels</span>
@@ -928,34 +929,34 @@ ENTETE_HTML = """
 # Pied de page : ce que l'outil dit du métier, au-delà de sa fonction.
 POSITIONNEMENT = """
 <div id="positionnement">
-  <p><b>Pourquoi cet outil</b></p>
-  <p>Un titre bien produit qui ne circule pas n'existe pas. Aujourd'hui, la
-     découverte passe par des vidéos verticales de quinze secondes — un format
-     que peu de studios savent alimenter, alors qu'il décide de la vie d'un
-     morceau.</p>
-  <p>ClipperMusic automatise cette étape&nbsp;: reconnaissance des paroles au
-     mot près, choix des images d'après le sens du texte, montage calé sur le
-     rythme, et gestion des droits musicaux intégrée. De la prise de son à la
-     mise en ligne, sans rupture.</p>
+  <p><b>Le mixage n'est plus la dernière étape</b></p>
+  <p>Un morceau se découvre aujourd'hui en quinze secondes, sur un écran
+     vertical, sans le son au premier passage. C'est là que tout se joue&nbsp;—
+     et c'est l'étape que personne ne veut faire&nbsp;: une heure de montage
+     pour un extrait qui vivra deux jours.</p>
+  <p>ClipperMusic la fait en vingt secondes. Il écoute le morceau, repère le
+     moment fort, cale les paroles au mot près, choisit les images d'après le
+     sens du texte et coupe sur le rythme. Les droits sont gérés au
+     passage&nbsp;: rien ne sort qui ne soit publiable.</p>
+  <p><b>De la prise de son à la mise en ligne, sans rupture.</b></p>
 </div>
 """
 
 # Affiché sous la vidéo une fois le clip prêt.
 PARTAGE_HTML = """
 <div id="partage">
-  <h3>&#128229; Récupérer et publier</h3>
-  <p><b>1.</b> Survole la vidéo et clique sur l'icône de téléchargement
-     (&#11015;&#65039;) en haut à droite du lecteur.</p>
-  <p><b>2.</b> Envoie le fichier sur ton téléphone — AirDrop, Google Drive,
-     ou en te l'envoyant par message.</p>
-  <p><b>3.</b> Publie&nbsp;:</p>
+  <h3>&#128229; Il ne reste plus qu'à publier</h3>
+  <p><b>1.</b> Clique sur <b>Télécharger</b> juste au-dessus.</p>
+  <p><b>2.</b> Envoie le fichier sur ton téléphone — AirDrop, Drive, ou par
+     message à toi-même.</p>
+  <p><b>3.</b> Importe-le&nbsp;:</p>
   <ul>
-    <li><b>TikTok</b> &rarr; Créer &rarr; Importer &rarr; ta vidéo</li>
-    <li><b>Instagram Reels</b> &rarr; + &rarr; Reel &rarr; ta vidéo</li>
-    <li><b>YouTube Shorts</b> &rarr; + &rarr; Créer un Short</li>
+    <li><b>TikTok</b> &rarr; Créer &rarr; Importer</li>
+    <li><b>Instagram</b> &rarr; + &rarr; Reel</li>
+    <li><b>YouTube</b> &rarr; + &rarr; Créer un Short</li>
   </ul>
   <p style="color:#9ba1ad;font-size:0.92em;margin-bottom:0">
-     Le format 1080&times;1920 est déjà le bon&nbsp;: aucun recadrage à faire.</p>
+     Le cadrage est déjà au bon format. Rien à recadrer, rien à retoucher.</p>
 </div>
 """
 
@@ -995,7 +996,7 @@ def construire_interface() -> gr.Blocks:
         # Rien n'est replié ici. C'est la seule décision que l'utilisateur a à
         # prendre, elle doit tenir en un coup d'oeil.
         fichier = gr.Audio(
-            label="🎵 Dépose ton MP3",
+            label="🎵 Ton morceau",
             type="filepath",
             sources=["upload"],
         )
@@ -1003,10 +1004,10 @@ def construire_interface() -> gr.Blocks:
         gr.HTML('<div class="separateur"><span>ou</span></div>')
 
         lien = gr.Textbox(
-            label="🔗 Colle un lien",
-            placeholder="YouTube · Spotify · Deezer · lien .mp3 · ou un style : « pop »",
-            info="On identifie ton morceau et on te propose des musiques "
-                 "libres de droits, utilisables sans risque.",
+            label="🔗 Un lien, ou une ambiance",
+            placeholder="YouTube · Spotify · Deezer · lien .mp3 · ou « pop », « rap »…",
+            info="Pas de fichier sous la main ? On identifie le morceau et on "
+                 "propose des titres libres de droits, publiables sans risque.",
         )
         message_lien = gr.Markdown("", visible=False)
 
@@ -1025,9 +1026,10 @@ def construire_interface() -> gr.Blocks:
 
         # --- 2. L'option qui compte ---
         sans_musique = gr.Checkbox(
-            label="🔇 Sans musique — pour ajouter le son sur TikTok / Instagram",
+            label="🔇 Exporter sans le son",
             value=False,
-            info="Coche si tu publies : le son ajouté depuis la plateforme "
+            info="À cocher si tu publies. Tu ajoutes la musique depuis TikTok "
+                 "ou Instagram : leur bibliothèque est sous licence, le son "
                  "n'est jamais coupé.",
         )
 
@@ -1041,11 +1043,11 @@ def construire_interface() -> gr.Blocks:
         # de barre de progression paraissent longues et opaques.
         gr.HTML(
             '<div class="etapes">'
-            '<span class="etape"><b>1</b>Paroles reconnues</span>'
+            '<span class="etape"><b>1</b>Il écoute tes paroles</span>'
             '<span class="fleche">&rarr;</span>'
-            '<span class="etape"><b>2</b>Visuels choisis</span>'
+            '<span class="etape"><b>2</b>Il choisit les images</span>'
             '<span class="fleche">&rarr;</span>'
-            '<span class="etape"><b>3</b>Montage sur le rythme</span>'
+            '<span class="etape"><b>3</b>Il coupe sur le rythme</span>'
             "</div>"
         )
 
