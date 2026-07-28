@@ -52,11 +52,16 @@ class TranscriptionError(Exception):
 _model_cache: dict[str, object] = {}
 
 
-# Mémoire nécessaire à chaque modèle, en mégaoctets, une fois quantifié en int8
-# et compte tenu du contexte d'inférence. Mesuré, pas estimé.
-BESOIN_MEMOIRE_MO = {"tiny": 200, "base": 350, "small": 700, "medium": 1600}
+# Mémoire réellement consommée par chaque modèle, en mégaoctets : pic mesuré
+# sur une transcription complète, quantification int8 comprise.
+#
+# Ces chiffres ont été mesurés, pas estimés — et les premières estimations
+# étaient fausses de 130 Mo sur « small », ce qui l'écartait à tort sur un
+# hébergement où il tient très bien.
+BESOIN_MEMOIRE_MO = {"tiny": 340, "base": 390, "small": 580, "medium": 1400}
 
-# Ce que consomment Gradio, spaCy et le reste de l'application en parallèle.
+# Ce que consomme l'application pendant que la transcription travaille dans son
+# sous-processus : Gradio, spaCy et l'interpréteur principal, au repos.
 MEMOIRE_RESERVEE_MO = 300
 
 
@@ -159,7 +164,26 @@ def transcribe_audio(
     if en_sous_processus:
         if progress:
             progress("Transcription des paroles (étape la plus longue)…")
-        return _transcrire_via_sous_processus(audio_path, model_name, language)
+
+        # Le modèle retenu peut malgré tout ne pas tenir : les besoins varient
+        # avec la durée du morceau. Plutôt qu'échouer, on redescend d'un cran.
+        demande = model_name or config.WHISPER_MODEL
+        replis = [demande] + [
+            m for m in ("base", "tiny")
+            if BESOIN_MEMOIRE_MO.get(m, 0) < BESOIN_MEMOIRE_MO.get(demande, 0)
+        ]
+
+        derniere: TranscriptionError | None = None
+        for essai, modele in enumerate(replis):
+            if essai and progress:
+                progress(f"Mémoire insuffisante : reprise avec le modèle « {modele} »…")
+            try:
+                return _transcrire_via_sous_processus(audio_path, modele, language)
+            except TranscriptionError as erreur:
+                derniere = erreur
+                if "mémoire" not in str(erreur).lower():
+                    raise
+        raise derniere or TranscriptionError("La transcription a échoué.")
 
     if progress:
         progress("Chargement du modèle de transcription…")
