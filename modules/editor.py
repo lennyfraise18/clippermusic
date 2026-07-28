@@ -36,12 +36,19 @@ class EditError(Exception):
 # Filtre appliqué à chaque plan : on agrandit jusqu'à couvrir le cadre vertical,
 # puis on recadre au centre. force_original_aspect_ratio=increase garantit qu'il
 # n'y a jamais de bandes noires.
-SCALE_CROP = (
-    f"scale={config.VIDEO_WIDTH}:{config.VIDEO_HEIGHT}"
-    f":force_original_aspect_ratio=increase,"
-    f"crop={config.VIDEO_WIDTH}:{config.VIDEO_HEIGHT},"
-    f"fps={config.VIDEO_FPS},setsar=1,format=yuv420p"
-)
+def _scale_crop(largeur: int | None = None, hauteur: int | None = None) -> str:
+    """Filtre de mise au format, à la résolution demandée.
+
+    Calculé à la demande et non figé une fois pour toutes : en cas de manque
+    de mémoire, le montage est relancé à une résolution plus basse.
+    """
+    largeur = largeur or config.VIDEO_WIDTH
+    hauteur = hauteur or config.VIDEO_HEIGHT
+    return (
+        f"scale={largeur}:{hauteur}:force_original_aspect_ratio=increase,"
+        f"crop={largeur}:{hauteur},"
+        f"fps={config.VIDEO_FPS},setsar=1,format=yuv420p"
+    )
 
 
 # --- Découpage de la timeline en plans --------------------------------------
@@ -188,6 +195,8 @@ def render_single_pass(
     work_dir: Path,
     progress: Callable[[str], None] | None = None,
     inclure_audio: bool = True,
+    largeur: int | None = None,
+    hauteur: int | None = None,
 ) -> Path:
     """Monte la vidéo complète en une seule commande ffmpeg.
 
@@ -218,7 +227,7 @@ def render_single_pass(
     # Un filtre scale+crop par plan, puis un concat, puis les sous-titres.
     filters = []
     for index in range(len(shots)):
-        filters.append(f"[{index}:v]{SCALE_CROP}[v{index}]")
+        filters.append(f"[{index}:v]{_scale_crop(largeur, hauteur)}[v{index}]")
 
     concat_inputs = "".join(f"[v{index}]" for index in range(len(shots)))
     filters.append(f"{concat_inputs}concat=n={len(shots)}:v=1:a=0[cat]")
@@ -267,6 +276,8 @@ def render_two_pass(
     work_dir: Path,
     progress: Callable[[str], None] | None = None,
     inclure_audio: bool = True,
+    largeur: int | None = None,
+    hauteur: int | None = None,
 ) -> Path:
     """Normalise chaque plan, concatène en copie, puis incruste les sous-titres.
 
@@ -288,7 +299,7 @@ def render_two_pass(
         arguments = [
             *_input_arguments(shot),
             "-an",
-            "-vf", SCALE_CROP,
+            "-vf", _scale_crop(largeur, hauteur),
             "-c:v", encoder,
             *config.encoder_options(encoder),
             output,
@@ -387,6 +398,8 @@ def render(
     approach: str = "single",
     progress: Callable[[str], None] | None = None,
     inclure_audio: bool = True,
+    largeur: int | None = None,
+    hauteur: int | None = None,
 ) -> Path:
     """Point d'entrée du montage. `approach` vaut "single" (B) ou "two_pass" (A).
 
@@ -398,15 +411,40 @@ def render(
         if explication and progress:
             progress(explication)
 
-    if approach == "two_pass":
-        return render_two_pass(
-            shots, audio_name, subtitle_name, output_name, work_dir, progress,
-            inclure_audio=inclure_audio,
-        )
-    return render_single_pass(
-        shots, audio_name, subtitle_name, output_name, work_dir, progress,
-        inclure_audio=inclure_audio,
-    )
+    # Résolutions à tenter, de la meilleure à la plus modeste. Si le système
+    # tue ffmpeg faute de mémoire, on recommence plus petit plutôt que de
+    # renvoyer une erreur : un clip un peu moins défini vaut mieux que rien.
+    resolutions = [(config.VIDEO_WIDTH, config.VIDEO_HEIGHT)]
+    for reduction in (0.75, 0.5):
+        largeur = int(config.VIDEO_WIDTH * reduction) // 2 * 2
+        hauteur = int(config.VIDEO_HEIGHT * reduction) // 2 * 2
+        if hauteur >= 640:
+            resolutions.append((largeur, hauteur))
+
+    derniere_erreur: EditError | None = None
+    for essai, (largeur, hauteur) in enumerate(resolutions):
+        if essai and progress:
+            progress(
+                f"Mémoire insuffisante : nouvelle tentative en {largeur}×{hauteur}…"
+            )
+        try:
+            fonction = render_two_pass if approach == "two_pass" else render_single_pass
+            return fonction(
+                shots, audio_name, subtitle_name, output_name, work_dir, progress,
+                inclure_audio=inclure_audio, largeur=largeur, hauteur=hauteur,
+            )
+        except EditError as erreur:
+            derniere_erreur = erreur
+            # On ne réessaie que sur un manque de mémoire : une erreur de
+            # fichier ou de filtre se reproduira à l'identique.
+            if "mémoire" not in str(erreur).lower():
+                raise
+            # Le montage précédent a laissé des fichiers à moitié écrits.
+            for reste in work_dir.glob("norm_*.mp4"):
+                reste.unlink(missing_ok=True)
+            (work_dir / "concat.mp4").unlink(missing_ok=True)
+
+    raise derniere_erreur or EditError("Le montage a échoué.")
 
 
 def extract_audio_segment(
