@@ -148,10 +148,20 @@ def _verifier_video(chemin_distant: str) -> bool:
     flux_audio = next((s for s in donnees["streams"] if s["codec_type"] == "audio"), None)
     duree = float(donnees["format"]["duration"])
 
+    # On ne compare pas à une résolution fixe : le serveur réduit
+    # volontairement en 720x1280 quand sa mémoire est limitée. Ce qui compte,
+    # c'est que le format reste vertical 9:16 et assez défini pour les réseaux.
+    largeur, hauteur = flux_video["width"], flux_video["height"]
+    ratio = hauteur / largeur if largeur else 0
     controle(
-        "format vertical 1080x1920",
-        (flux_video["width"], flux_video["height"]) == (config.VIDEO_WIDTH, config.VIDEO_HEIGHT),
-        f"{flux_video['width']}x{flux_video['height']}",
+        "format vertical 9:16",
+        abs(ratio - 16 / 9) < 0.02,
+        f"{largeur}x{hauteur} (ratio {ratio:.2f})",
+    )
+    controle(
+        "définition suffisante pour les réseaux",
+        hauteur >= 1280,
+        f"{hauteur} px de haut (minimum 1280)",
     )
     controle("la bande son est présente", flux_audio is not None)
     controle(
