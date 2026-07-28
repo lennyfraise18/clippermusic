@@ -98,14 +98,38 @@ def telecharger_audio_direct(url: str, destination) -> "Path":
 
     from modules import audio as _audio
 
+    import time
+
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        reponse = requests.get(url, headers=HEADERS, timeout=180, stream=True)
-        reponse.raise_for_status()
-    except requests.RequestException as erreur:
-        raise LienError(f"Téléchargement impossible depuis ce lien : {erreur}")
+    # Les hébergeurs de fichiers renvoient parfois une erreur passagère (500,
+    # 502, 503) alors que le fichier est parfaitement disponible. Constaté sur
+    # archive.org : un même lien échoue puis fonctionne quelques secondes plus
+    # tard. On réessaie donc avant d'abandonner.
+    reponse = None
+    derniere_erreur = None
+    for tentative in range(3):
+        try:
+            reponse = requests.get(url, headers=HEADERS, timeout=180, stream=True)
+            if reponse.status_code in (500, 502, 503, 504, 429):
+                derniere_erreur = f"le serveur a répondu {reponse.status_code}"
+                reponse.close()
+                reponse = None
+                time.sleep(1.5 * (tentative + 1))
+                continue
+            reponse.raise_for_status()
+            break
+        except requests.RequestException as erreur:
+            derniere_erreur = str(erreur)
+            time.sleep(1.5 * (tentative + 1))
+
+    if reponse is None:
+        raise LienError(
+            f"Téléchargement impossible depuis ce lien après trois tentatives : "
+            f"{derniere_erreur}\nLe serveur qui héberge le fichier est "
+            f"probablement momentanément indisponible."
+        )
 
     annonce = reponse.headers.get("content-length")
     if annonce and int(annonce) > TAILLE_MAX_AUDIO:
