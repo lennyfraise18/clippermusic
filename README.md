@@ -290,6 +290,44 @@ beaucoup de cœurs et un encodeur logiciel lent.
 
 ---
 
+## 🧠 S'adapter à l'hébergement plutôt que le supposer
+
+Le déploiement a été la partie la plus instructive du projet. L'application
+fonctionnait en local et échouait en ligne, avec un conteneur tué sans message
+d'erreur. Six causes distinctes, chacune masquée par la précédente :
+
+| # | Cause | Correction | Gain |
+|---|---|---|---|
+| 1 | **PyTorch** réservait ~1,9 Go, quel que soit le modèle | passage à `faster-whisper` (CTranslate2, C++) | **5× moins de mémoire, 7× plus rapide** |
+| 2 | Le modèle `small` ne tenait pas | rétrogradation automatique selon la mémoire lue | plus de conteneur tué |
+| 3 | Le montage en une passe ouvrait tous les clips à la fois | montage clip par clip sous 1,5 Go | pic mémoire constant |
+| 4 | Le modèle restait chargé pendant le montage | libération avant ffmpeg | ~350 Mo rendus |
+| 5 | `gc.collect()` ne rend rien au système | transcription dans un **sous-processus** | 250 Mo réellement libérés |
+| 6 | Clips téléchargés en 1080p pour une sortie en 720p | téléchargement à la résolution de sortie | décodage divisé par deux |
+
+La leçon tient en une phrase : **une application ne doit pas supposer ses
+ressources, elle doit les mesurer.** `modules/config.py` lit la limite mémoire
+du conteneur (via les cgroups, pas `/proc/meminfo` qui montrerait la machine
+physique), et l'application en déduit son modèle, sa stratégie de montage et sa
+résolution. Le même code produit du 1080×1920 avec le modèle `small` sur une
+machine confortable, et du 720×1280 avec `base` sur un hébergement gratuit.
+
+En dernier recours, le montage **recommence à une résolution plus basse**
+plutôt que d'échouer : mieux vaut un clip un peu moins défini que pas de clip.
+
+Deux points de méthode qui ont tout débloqué :
+
+- **Rendre le système observable.** Tant que l'erreur était `ffmpeg a échoué :`
+  suivi de rien, le diagnostic était impossible. Un code de retour négatif
+  signifie « tué par un signal », pas « erreur interne » — le distinguer a
+  immédiatement pointé la mémoire. Le panneau *Diagnostic* de l'interface
+  affiche pour la même raison la mémoire allouée et le modèle réellement utilisé.
+- **Tester en production, pas seulement en local.** `scripts/test_production.py`
+  vérifie 14 points sur le service déployé, dont le rendu des sous-titres en
+  comptant les pixels de texte réellement dessinés.
+
+---
+
 ## ⚙️ Choix techniques et pièges rencontrés
 
 **`whisper-timestamped` plutôt que `openai-whisper`.** Le karaoké a besoin de
@@ -501,7 +539,8 @@ Ce qui a été vérifié, et comment :
 | Les fichiers temporaires sont nettoyés, y compris après une erreur | ✅ | `test_cas_limites.py` cas 6 |
 | Le mode Jamendo fonctionne comme alternative complète | ✅ | `test_jamendo.py` + pipeline complet sur un morceau CC |
 | Les licences No Derivatives sont écartées | ✅ | `test_jamendo.py` |
-| Le Space est déployé et accessible via un lien public | ⬜ | à faire, voir *Déploiement* |
+| L'application est déployée et accessible via un lien public | ✅ | https://clippermusic-production.up.railway.app — 14/14 contrôles (`test_production.py`) |
+| Trois générations d'affilée aboutissent | ✅ | 3/3 après le repli automatique de résolution |
 | Le README liste les clés à créer avec liens et commandes | ✅ | ce fichier |
 
 ---
